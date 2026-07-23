@@ -1342,7 +1342,354 @@ function setupAgentEvents(ctx) {
     }
   })
 
-  _eventDisposers = [d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16]
+  // dev-browser.mouse-move — move mouse cursor to (x, y)
+  const d17 = host.onEvent('dev-browser.mouse-move', (event) => {
+    const requestId = event?.payload?.request_id
+    const x = event?.payload?.x
+    const y = event?.payload?.y
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+
+    const jsFallback = `document.elementFromPoint(${x},${y})?.dispatchEvent(new MouseEvent('mousemove',{clientX:${x},clientY:${y},bubbles:true}))`
+    const sendJsFallback = () => {
+      if (wv?.executeJavaScript) {
+        wv.executeJavaScript(jsFallback)
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, x, y, method: 'js' } } }).catch(() => {})
+          })
+          .catch(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'both methods failed' } }).catch(() => {})
+          })
+      } else {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      }
+    }
+
+    try {
+      if (wv?.sendInputEvent) {
+        wv.sendInputEvent({ type: 'mouseMove', x, y })
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, x, y, method: 'native' } } }).catch(() => {})
+          })
+          .catch(() => { sendJsFallback() })
+      } else {
+        sendJsFallback()
+      }
+    } catch (e) {
+      sendJsFallback()
+    }
+  })
+
+  // dev-browser.click — click at (x, y) with optional button and double-click
+  const d18 = host.onEvent('dev-browser.click', (event) => {
+    const requestId = event?.payload?.request_id
+    const x = event?.payload?.x
+    const y = event?.payload?.y
+    const button = event?.payload?.button || 'left'
+    const double = event?.payload?.double || false
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+
+    const clickCount = double ? 2 : 1
+    const jsFallback = `(function(){
+      var el = document.elementFromPoint(${x},${y});
+      if (!el) return;
+      var opts = {clientX:${x},clientY:${y},bubbles:true,button:${button === 'right' ? 2 : 0}};
+      el.dispatchEvent(new MouseEvent('mousedown',opts));
+      el.dispatchEvent(new MouseEvent('mouseup',opts));
+      if (${button === 'right' ? 1 : 0}) {
+        el.dispatchEvent(new MouseEvent('contextmenu',opts));
+      } else {
+        el.dispatchEvent(new MouseEvent('click',opts));
+        if (${double ? 1 : 0}) {
+          el.dispatchEvent(new MouseEvent('click',opts));
+        }
+      }
+    })()`
+    const sendJsFallback = () => {
+      if (wv?.executeJavaScript) {
+        wv.executeJavaScript(jsFallback)
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, x, y, button, method: 'js' } } }).catch(() => {})
+          })
+          .catch(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'both methods failed' } }).catch(() => {})
+          })
+      } else {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      }
+    }
+
+    try {
+      if (wv?.sendInputEvent) {
+        wv.sendInputEvent({ type: 'mouseMove', x, y })
+          .then(() => wv.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount }))
+          .then(() => wv.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount }))
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, x, y, button, method: 'native' } } }).catch(() => {})
+          })
+          .catch(() => { sendJsFallback() })
+      } else {
+        sendJsFallback()
+      }
+    } catch (e) {
+      sendJsFallback()
+    }
+  })
+
+  // dev-browser.type — type text into the focused element
+  const d19 = host.onEvent('dev-browser.type', (event) => {
+    const requestId = event?.payload?.request_id
+    const text = event?.payload?.text || ''
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+
+    const escapedText = JSON.stringify(text)
+    const jsFallback = `(function(){
+      var el = document.activeElement;
+      if (!el) return;
+      var t = ${escapedText};
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        el.value = el.value + t;
+        el.dispatchEvent(new Event('input',{bubbles:true}));
+        el.dispatchEvent(new Event('change',{bubbles:true}));
+      } else if (el.isContentEditable) {
+        document.execCommand('insertText', false, t);
+      }
+    })()`
+    const sendJsFallback = () => {
+      if (wv?.executeJavaScript) {
+        wv.executeJavaScript(jsFallback)
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, text, method: 'js' } } }).catch(() => {})
+          })
+          .catch(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'both methods failed' } }).catch(() => {})
+          })
+      } else {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      }
+    }
+
+    // Native: send each char sequentially via promise chain
+    try {
+      if (wv?.sendInputEvent) {
+        let chain = Promise.resolve()
+        for (const char of text) {
+          chain = chain.then(() => wv.sendInputEvent({ type: 'char', keyCode: char }))
+        }
+        chain
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, text, method: 'native' } } }).catch(() => {})
+          })
+          .catch(() => { sendJsFallback() })
+      } else {
+        sendJsFallback()
+      }
+    } catch (e) {
+      sendJsFallback()
+    }
+  })
+
+  // dev-browser.press-key — press a keyboard key
+  const d20 = host.onEvent('dev-browser.press-key', (event) => {
+    const requestId = event?.payload?.request_id
+    const key = event?.payload?.key || ''
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+
+    const escapedKey = JSON.stringify(key)
+    const jsFallback = `(function(){
+      var el = document.activeElement;
+      if (!el) return;
+      var k = ${escapedKey};
+      el.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true}));
+      el.dispatchEvent(new KeyboardEvent('keyup',{key:k,bubbles:true}));
+    })()`
+    const sendJsFallback = () => {
+      if (wv?.executeJavaScript) {
+        wv.executeJavaScript(jsFallback)
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, key, method: 'js' } } }).catch(() => {})
+          })
+          .catch(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'both methods failed' } }).catch(() => {})
+          })
+      } else {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      }
+    }
+
+    try {
+      if (wv?.sendInputEvent) {
+        wv.sendInputEvent({ type: 'keyDown', keyCode: key })
+          .then(() => wv.sendInputEvent({ type: 'keyUp', keyCode: key }))
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, key, method: 'native' } } }).catch(() => {})
+          })
+          .catch(() => { sendJsFallback() })
+      } else {
+        sendJsFallback()
+      }
+    } catch (e) {
+      sendJsFallback()
+    }
+  })
+
+  // dev-browser.scroll — scroll at (x, y) in a direction
+  const d21 = host.onEvent('dev-browser.scroll', (event) => {
+    const requestId = event?.payload?.request_id
+    const x = event?.payload?.x || 0
+    const y = event?.payload?.y || 0
+    const direction = event?.payload?.direction || 'down'
+    const amount = event?.payload?.amount || 300
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+
+    const delta = direction === 'down' ? amount : -amount
+    const ticks = direction === 'down' ? 3 : -3
+    const jsFallback = `window.scrollBy(0, ${delta})`
+    const sendJsFallback = () => {
+      if (wv?.executeJavaScript) {
+        wv.executeJavaScript(jsFallback)
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, direction, amount, method: 'js' } } }).catch(() => {})
+          })
+          .catch(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'both methods failed' } }).catch(() => {})
+          })
+      } else {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      }
+    }
+
+    try {
+      if (wv?.sendInputEvent) {
+        wv.sendInputEvent({ type: 'mouseWheel', x, y, deltaX: 0, deltaY: delta, wheelTicksX: 0, wheelTicksY: ticks })
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, direction, amount, method: 'native' } } }).catch(() => {})
+          })
+          .catch(() => { sendJsFallback() })
+      } else {
+        sendJsFallback()
+      }
+    } catch (e) {
+      sendJsFallback()
+    }
+  })
+
+  // dev-browser.drag — drag from (x1,y1) to (x2,y2)
+  const d22 = host.onEvent('dev-browser.drag', (event) => {
+    const requestId = event?.payload?.request_id
+    const x1 = event?.payload?.x1
+    const y1 = event?.payload?.y1
+    const x2 = event?.payload?.x2
+    const y2 = event?.payload?.y2
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+
+    const jsFallback = `(function(){
+      var el = document.elementFromPoint(${x1},${y1});
+      if (!el) return;
+      var opts1 = {clientX:${x1},clientY:${y1},bubbles:true};
+      var opts2 = {clientX:${x2},clientY:${y2},bubbles:true};
+      el.dispatchEvent(new DragEvent('dragstart',opts1));
+      el.dispatchEvent(new DragEvent('drag',opts2));
+      el.dispatchEvent(new DragEvent('dragend',opts2));
+    })()`
+    const sendJsFallback = () => {
+      if (wv?.executeJavaScript) {
+        wv.executeJavaScript(jsFallback)
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, from: { x: x1, y: y1 }, to: { x: x2, y: y2 }, method: 'js' } } }).catch(() => {})
+          })
+          .catch(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'both methods failed' } }).catch(() => {})
+          })
+      } else {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      }
+    }
+
+    try {
+      if (wv?.sendInputEvent) {
+        wv.sendInputEvent({ type: 'mouseMove', x: x1, y: y1 })
+          .then(() => wv.sendInputEvent({ type: 'mouseDown', x: x1, y: y1, button: 'left', clickCount: 1 }))
+          .then(() => wv.sendInputEvent({ type: 'mouseMove', x: x2, y: y2 }))
+          .then(() => wv.sendInputEvent({ type: 'mouseUp', x: x2, y: y2, button: 'left', clickCount: 1 }))
+          .then(() => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, from: { x: x1, y: y1 }, to: { x: x2, y: y2 }, method: 'native' } } }).catch(() => {})
+          })
+          .catch(() => { sendJsFallback() })
+      } else {
+        sendJsFallback()
+      }
+    } catch (e) {
+      sendJsFallback()
+    }
+  })
+
+  _eventDisposers = [d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22]
 }
 
 // ---------------------------------------------------------------------------
@@ -1414,11 +1761,10 @@ function TabBar() {
                 ),
                 children: tab.title || compactUrl(tab.url),
               }),
-              tabs.length > 1
-                ? jsx('button', {
+              jsx('button', {
                     type: 'button',
                     className:
-                      'ml-1 inline-flex h-4 w-4 items-center justify-center rounded-sm opacity-0 group-hover/tab:opacity-100 transition-opacity hover:bg-[var(--ui-stroke-secondary)]',
+                      'ml-1 inline-flex h-4 w-4 items-center justify-center rounded-sm text-[var(--ui-text-tertiary)] hover:bg-[var(--ui-stroke-secondary)] hover:text-[var(--ui-text-primary)] transition-colors',
                     onClick: (e) => {
                       e.stopPropagation()
                       haptic('tap')
@@ -1428,7 +1774,6 @@ function TabBar() {
                     'aria-label': t('closeTab'),
                     children: jsx(icons.X, { className: 'size-3' }),
                   })
-                : null,
             ],
           },
           `tab-${tab.id}`
@@ -1439,17 +1784,6 @@ function TabBar() {
         icon: 'Plus',
         label: t('newTab'),
         onClick: () => addTab($homeUrl.get()),
-      }),
-      // Spacer
-      jsx('div', { className: 'flex-1' }),
-      // Close pane button
-      jsx(IconButton, {
-        icon: 'X',
-        label: 'Close',
-        onClick: () => {
-          haptic('tap')
-          host.navigate('/')
-        },
       }),
     ],
   })
@@ -2307,7 +2641,11 @@ export default {
           label: 'Close Dev Browser',
           keywords: ['dev', 'browser', 'close', 'hide'],
           run: () => {
-            host.navigate('/')
+            host.request('plugins.manage', {
+              action: 'toggle',
+              name: 'dev-browser',
+              enable: false,
+            }).catch(() => {})
           },
         },
       },

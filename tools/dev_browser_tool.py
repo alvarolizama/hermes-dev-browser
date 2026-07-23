@@ -797,3 +797,228 @@ registry.register(
     check_fn=check_dev_browser_requirements,
     emoji="🎯",
 )
+
+# ---------------------------------------------------------------------------
+# Tool: dev_browser_mouse_move
+# ---------------------------------------------------------------------------
+
+def dev_browser_mouse_move(x: int, y: int) -> str:
+    """Move the mouse cursor to (x, y) coordinates in the browser."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("dev-browser.mouse-move", {"x": x, "y": y, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Tool: dev_browser_click
+# ---------------------------------------------------------------------------
+
+def dev_browser_click(x: int, y: int, button: str = "left", double: bool = False) -> str:
+    """Click at (x, y) in the browser. button: 'left' or 'right'. double: True for double-click."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("dev-browser.click", {"x": x, "y": y, "button": button, "double": double, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Tool: dev_browser_type
+# ---------------------------------------------------------------------------
+
+def dev_browser_type(text: str) -> str:
+    """Type text into the currently focused element in the browser."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("dev-browser.type", {"text": text, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=10.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Tool: dev_browser_press_key
+# ---------------------------------------------------------------------------
+
+def dev_browser_press_key(key: str) -> str:
+    """Press a keyboard key in the browser. Examples: 'Enter', 'Tab', 'Escape', 'ArrowDown', 'a'."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("dev-browser.press-key", {"key": key, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Tool: dev_browser_scroll
+# ---------------------------------------------------------------------------
+
+def dev_browser_scroll(x: int = 0, y: int = 0, direction: str = "down", amount: int = 300) -> str:
+    """Scroll at (x, y) in the browser. direction: 'up' or 'down'. amount: pixels."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("dev-browser.scroll", {"x": x, "y": y, "direction": direction, "amount": amount, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Tool: dev_browser_drag
+# ---------------------------------------------------------------------------
+
+def dev_browser_drag(x1: int, y1: int, x2: int, y2: int) -> str:
+    """Drag from (x1, y1) to (x2, y2) in the browser."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("dev-browser.drag", {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=10.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Schemas for mouse/keyboard tools
+# ---------------------------------------------------------------------------
+
+MOUSE_MOVE_SCHEMA = {
+    "name": "dev_browser_mouse_move",
+    "description": (
+        "Move the mouse cursor to (x, y) coordinates in the Dev Browser pane. "
+        "Coordinates are relative to the webview."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "x": {"type": "integer", "description": "X coordinate (pixels) relative to the webview."},
+            "y": {"type": "integer", "description": "Y coordinate (pixels) relative to the webview."},
+        },
+        "required": ["x", "y"],
+    },
+}
+
+CLICK_SCHEMA = {
+    "name": "dev_browser_click",
+    "description": (
+        "Click at (x, y) coordinates in the Dev Browser pane. Supports left/right "
+        "click and double-click."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "x": {"type": "integer", "description": "X coordinate (pixels) relative to the webview."},
+            "y": {"type": "integer", "description": "Y coordinate (pixels) relative to the webview."},
+            "button": {
+                "type": "string",
+                "enum": ["left", "right"],
+                "description": "Mouse button: 'left' or 'right'.",
+                "default": "left",
+            },
+            "double": {
+                "type": "boolean",
+                "description": "If true, perform a double-click.",
+                "default": False,
+            },
+        },
+        "required": ["x", "y"],
+    },
+}
+
+TYPE_SCHEMA = {
+    "name": "dev_browser_type",
+    "description": (
+        "Type text into the currently focused element in the Dev Browser. "
+        "Use after clicking into an input field or contenteditable element."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "Text to type into the focused element."},
+        },
+        "required": ["text"],
+    },
+}
+
+PRESS_KEY_SCHEMA = {
+    "name": "dev_browser_press_key",
+    "description": (
+        "Press a keyboard key in the Dev Browser. Examples: 'Enter', 'Tab', "
+        "'Escape', 'ArrowDown', 'a', 'Backspace'. Use for form submission, "
+        "navigation, or keyboard shortcuts."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "key": {"type": "string", "description": "Key to press (e.g. 'Enter', 'Tab', 'Escape', 'ArrowDown', 'a')."},
+        },
+        "required": ["key"],
+    },
+}
+
+SCROLL_SCHEMA = {
+    "name": "dev_browser_scroll",
+    "description": (
+        "Scroll the page at (x, y) in the Dev Browser. Direction: 'up' or 'down'. "
+        "Amount: pixels to scroll."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "x": {"type": "integer", "description": "X coordinate (pixels) relative to the webview. Default: 0.", "default": 0},
+            "y": {"type": "integer", "description": "Y coordinate (pixels) relative to the webview. Default: 0.", "default": 0},
+            "direction": {
+                "type": "string",
+                "enum": ["up", "down"],
+                "description": "Scroll direction: 'up' or 'down'.",
+                "default": "down",
+            },
+            "amount": {
+                "type": "integer",
+                "description": "Number of pixels to scroll.",
+                "default": 300,
+            },
+        },
+    },
+}
+
+DRAG_SCHEMA = {
+    "name": "dev_browser_drag",
+    "description": (
+        "Drag from (x1, y1) to (x2, y2) in the Dev Browser. Useful for sliders, "
+        "drag-and-drop, and reordering elements."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "x1": {"type": "integer", "description": "Start X coordinate (pixels)."},
+            "y1": {"type": "integer", "description": "Start Y coordinate (pixels)."},
+            "x2": {"type": "integer", "description": "End X coordinate (pixels)."},
+            "y2": {"type": "integer", "description": "End Y coordinate (pixels)."},
+        },
+        "required": ["x1", "y1", "x2", "y2"],
+    },
+}
+
+registry.register(name="dev_browser_mouse_move", toolset="terminal", schema=MOUSE_MOVE_SCHEMA, handler=lambda args, **kw: dev_browser_mouse_move(x=args.get("x",0), y=args.get("y",0)), check_fn=check_dev_browser_requirements, emoji="🖱️")
+registry.register(name="dev_browser_click", toolset="terminal", schema=CLICK_SCHEMA, handler=lambda args, **kw: dev_browser_click(x=args.get("x",0), y=args.get("y",0), button=args.get("button","left"), double=args.get("double",False)), check_fn=check_dev_browser_requirements, emoji="👆")
+registry.register(name="dev_browser_type", toolset="terminal", schema=TYPE_SCHEMA, handler=lambda args, **kw: dev_browser_type(text=args.get("text","")), check_fn=check_dev_browser_requirements, emoji="⌨️")
+registry.register(name="dev_browser_press_key", toolset="terminal", schema=PRESS_KEY_SCHEMA, handler=lambda args, **kw: dev_browser_press_key(key=args.get("key","")), check_fn=check_dev_browser_requirements, emoji="🔑")
+registry.register(name="dev_browser_scroll", toolset="terminal", schema=SCROLL_SCHEMA, handler=lambda args, **kw: dev_browser_scroll(x=args.get("x",0), y=args.get("y",0), direction=args.get("direction","down"), amount=args.get("amount",300)), check_fn=check_dev_browser_requirements, emoji="📜")
+registry.register(name="dev_browser_drag", toolset="terminal", schema=DRAG_SCHEMA, handler=lambda args, **kw: dev_browser_drag(x1=args.get("x1",0), y1=args.get("y1",0), x2=args.get("x2",0), y2=args.get("y2",0)), check_fn=check_dev_browser_requirements, emoji="✋")
