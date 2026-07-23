@@ -23,10 +23,9 @@ Tools:
 import json
 import os
 import re
+import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 import uuid
 
 from tools import desktop_ui
@@ -56,101 +55,46 @@ def _api_base() -> str:
 
 
 # ---------------------------------------------------------------------------
-# In-process result mailbox (fast path)
+# File-based result mailbox (cross-process)
 # ---------------------------------------------------------------------------
-# When the gateway loads the plugin, ``plugin_api._results`` lives in the
-# same process. We cache a reference to it so we don't re-import on every
-# poll iteration. ``_mailbox_lock`` is the lock object from the plugin
-# module; if it's ``None`` we fall back to HTTP polling.
+# The agent tool runs in the tui_gateway slash_worker process, while the
+# plugin_api (FastAPI router) lives in the dashboard web_server process.
+# They don't share memory, and HTTP polling fails because the dashboard
+# requires OAuth session cookies the tool doesn't have.
+#
+# Solution: the plugin JS POSTs results via ctx.rest() (authenticated by
+# the renderer's cookie). plugin_api writes each result to a temp file.
+# The tool polls the filesystem — no auth needed, no cross-process state.
 
-_mailbox = None  # type: ignore[assignment]  # set lazily by _try_load_in_process_mailbox
-_mailbox_lock = None  # type: ignore[assignment]  # set lazily by _try_load_in_process_mailbox
-_mailbox_checked = False
-
-
-def _try_load_in_process_mailbox() -> bool:
-    """Attempt to import the plugin's result dict directly.
-
-    Returns True if the in-process mailbox is available (subsequent
-    ``_get_result_in_process`` calls will work). Idempotent — only
-    performs the import once per process lifetime.
-    """
-    global _mailbox, _mailbox_lock, _mailbox_checked
-    if _mailbox_checked:
-        return _mailbox is not None
-    _mailbox_checked = True
-
-    try:
-        from plugins.dev_browser.dashboard.plugin_api import (
-            _results as results_dict,
-            _results_lock as lock,
-        )
-        _mailbox = results_dict
-        _mailbox_lock = lock
-        return True
-    except Exception:
-        return False
+_MAILBOX_DIR = os.path.join(tempfile.gettempdir(), "dev-browser-mailbox")
 
 
-def _get_result_in_process(request_id: str, timeout: float) -> dict | None:
-    """Poll the in-process mailbox. Returns the result dict or None on timeout."""
-    if _mailbox is None or _mailbox_lock is None:
-        return None
+def _mailbox_path(request_id: str) -> str:
+    """Return the file path for a result."""
+    return os.path.join(_MAILBOX_DIR, f"{request_id}.json")
 
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        with _mailbox_lock:
-            entry = _mailbox.get(request_id)
-            if entry is not None:
-                _mailbox.pop(request_id, None)
-                return {"ready": True, "result": entry.get("result")}
-        time.sleep(_POLL_INTERVAL_S)
-    return None
-
-
-# ---------------------------------------------------------------------------
-# HTTP result polling (fallback path)
-# ---------------------------------------------------------------------------
-
-def _get_result_http(request_id: str, timeout: float) -> dict:
-    """Poll the REST mailbox for a result. Returns the result dict or error."""
-    deadline = time.time() + timeout
-    url = f"{_api_base()}/result/{request_id}"
-
-    while time.time() < deadline:
-        try:
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode())
-                if data.get("ready"):
-                    return data
-        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
-            pass
-        time.sleep(_POLL_INTERVAL_S)
-
-    return {"error": "timeout waiting for browser response"}
-
-
-# ---------------------------------------------------------------------------
-# Unified poll (tries in-process first, then HTTP)
-# ---------------------------------------------------------------------------
 
 def _poll_result(request_id: str, timeout: float = _POLL_TIMEOUT_S) -> dict:
-    """Poll for a result. Tries the in-process mailbox first (fast path),
-    then falls back to HTTP polling.
+    """Poll the file-based mailbox for a result.
 
     Returns a dict with either ``{"ready": True, "result": ...}`` on success
     or ``{"error": "..."}`` on timeout.
     """
-    # Fast path: in-process
-    if _try_load_in_process_mailbox():
-        result = _get_result_in_process(request_id, timeout)
-        if result is not None:
-            return result
-        return {"error": "timeout waiting for browser response"}
+    deadline = time.time() + timeout
+    fpath = _mailbox_path(request_id)
 
-    # Fallback: HTTP polling
-    return _get_result_http(request_id, timeout)
+    while time.time() < deadline:
+        try:
+            with open(fpath, "r") as f:
+                data = json.load(f)
+            # Consume — delete the file after reading
+            os.unlink(fpath)
+            return data
+        except (OSError, json.JSONDecodeError):
+            pass
+        time.sleep(_POLL_INTERVAL_S)
+
+    return {"error": "timeout waiting for browser response"}
 
 
 # ---------------------------------------------------------------------------
