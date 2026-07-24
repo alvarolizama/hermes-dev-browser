@@ -1006,16 +1006,34 @@ function setupAgentEvents(ctx) {
     }
 
     try {
-      const image = wv.capturePage()
-      const dataUrl = image?.toDataURL?.() || null
-      if (requestId) {
-        ctx
-          .rest('/result', {
-            method: 'POST',
-            body: { request_id: requestId, result: dataUrl },
-          })
-          .catch(() => {})
-      }
+      const capturePromise = wv.capturePage()
+      // capturePage() returns a Promise<NativeImage> in Electron webview
+      Promise.resolve(capturePromise)
+        .then((image) => {
+          const dataUrl = image?.toDataURL?.() || null
+          if (requestId) {
+            ctx
+              .rest('/result', {
+                method: 'POST',
+                body: { request_id: requestId, result: dataUrl },
+              })
+              .catch(() => {})
+          }
+        })
+        .catch((error) => {
+          if (requestId) {
+            ctx
+              .rest('/result', {
+                method: 'POST',
+                body: {
+                  request_id: requestId,
+                  result: null,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              })
+              .catch(() => {})
+          }
+        })
     } catch (error) {
       if (requestId) {
         ctx
