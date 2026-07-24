@@ -29,15 +29,15 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 
 ```bash
 # Desktop plugin (the browser pane UI)
-mkdir -p ~/.hermes/desktop-plugins/dev-browser
-curl -o ~/.hermes/desktop-plugins/dev-browser/plugin.js \
+mkdir -p ~/.hermes/desktop-plugins/hermes-dev-browser
+curl -o ~/.hermes/desktop-plugins/hermes-dev-browser/plugin.js \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/plugin/plugin.js
 
 # Backend (REST mailbox for agent tool results)
-mkdir -p ~/.hermes/plugins/dev-browser/dashboard
-curl -o ~/.hermes/plugins/dev-browser/dashboard/manifest.json \
+mkdir -p ~/.hermes/plugins/hermes-dev-browser/dashboard
+curl -o ~/.hermes/plugins/hermes-dev-browser/dashboard/manifest.json \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/backend/manifest.json
-curl -o ~/.hermes/plugins/dev-browser/dashboard/plugin_api.py \
+curl -o ~/.hermes/plugins/hermes-dev-browser/dashboard/plugin_api.py \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/backend/plugin_api.py
 
 # Agent tools (Python tools the AI uses to control the browser)
@@ -63,12 +63,12 @@ Add the dev_browser tool names to `_HERMES_CORE_TOOLS` in `~/.hermes/hermes-agen
 
 ### 3. Enable the Python backend
 
-Add `dev-browser` to `plugins.enabled` in `~/.hermes/config.yaml`:
+Add `hermes-dev-browser` to `plugins.enabled` in `~/.hermes/config.yaml`:
 
 ```yaml
 plugins:
   enabled:
-    - dev-browser
+    - hermes-dev-browser
 ```
 
 ### 4. Reload
@@ -215,7 +215,7 @@ dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
 │  │               │  │ └──────────────────────────────────────┘ │ │
 │  └───────────────┘  └────────────────────────────────────────┘ │
 │                                                                │
-│  Backend: plugin_api.py (REST mailbox at /api/plugins/)        │
+│  Backend: plugin_api.py (REST mailbox at /api/plugins/hermes-dev-browser/) │
 │  Tools: dev_browser_tool.py (21 agent tools)                   │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -234,7 +234,7 @@ The result includes `method: 'native'` or `method: 'js'` so the agent knows whic
 
 - **Plugin JS** (`plugin/plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, console, network, element picker, and input simulation. Listens for events from the agent via `host.onEvent`.
 
-- **Backend** (`backend/plugin_api.py`) — A FastAPI router mounted at `/api/plugins/dev-browser/`. Acts as a thread-safe in-memory result mailbox: the plugin JS POSTs results here after executing agent commands (eval, screenshot, click), and the Python tools poll for them.
+- **Backend** (`backend/plugin_api.py`) — A FastAPI router mounted at `/api/plugins/hermes-dev-browser/`. Acts as a thread-safe in-memory result mailbox: the plugin JS POSTs results here after executing agent commands (eval, screenshot, click), and the Python tools poll for them.
 
 - **Agent tools** (`tools/dev_browser_tool.py`) — 21 Python tools registered in the `terminal` toolset, gated on `HERMES_DESKTOP`. They emit events to the plugin via `desktop_ui.emit()`, then poll the REST mailbox (or use in-process import) for results.
 

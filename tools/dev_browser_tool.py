@@ -23,9 +23,10 @@ Tools:
 import json
 import os
 import re
-import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 
 from tools import desktop_ui
@@ -51,50 +52,105 @@ def _dashboard_port() -> str:
 
 def _api_base() -> str:
     """Build the REST base URL for the dev-browser plugin mailbox."""
-    return f"http://127.0.0.1:{_dashboard_port()}/api/plugins/dev-browser"
+    return f"http://127.0.0.1:{_dashboard_port()}/api/plugins/hermes-dev-browser"
 
 
 # ---------------------------------------------------------------------------
-# File-based result mailbox (cross-process)
+# In-process result mailbox (fast path)
 # ---------------------------------------------------------------------------
-# The agent tool runs in the tui_gateway slash_worker process, while the
-# plugin_api (FastAPI router) lives in the dashboard web_server process.
-# They don't share memory, and HTTP polling fails because the dashboard
-# requires OAuth session cookies the tool doesn't have.
-#
-# Solution: the plugin JS POSTs results via ctx.rest() (authenticated by
-# the renderer's cookie). plugin_api writes each result to a temp file.
-# The tool polls the filesystem — no auth needed, no cross-process state.
+# When the gateway loads the plugin, ``plugin_api._results`` lives in the
+# same process. We cache a reference to it so we don't re-import on every
+# poll iteration. ``_mailbox_lock`` is the lock object from the plugin
+# module; if it's ``None`` we fall back to HTTP polling.
 
-_MAILBOX_DIR = os.path.join(tempfile.gettempdir(), "dev-browser-mailbox")
+_mailbox = None  # type: ignore[assignment]  # set lazily by _try_load_in_process_mailbox
+_mailbox_lock = None  # type: ignore[assignment]  # set lazily by _try_load_in_process_mailbox
+_mailbox_checked = False
 
 
-def _mailbox_path(request_id: str) -> str:
-    """Return the file path for a result."""
-    return os.path.join(_MAILBOX_DIR, f"{request_id}.json")
+def _try_load_in_process_mailbox() -> bool:
+    """Attempt to import the plugin's result dict directly.
 
-
-def _poll_result(request_id: str, timeout: float = _POLL_TIMEOUT_S) -> dict:
-    """Poll the file-based mailbox for a result.
-
-    Returns a dict with either ``{"ready": True, "result": ...}`` on success
-    or ``{"error": "..."}`` on timeout.
+    Returns True if the in-process mailbox is available (subsequent
+    ``_get_result_in_process`` calls will work). Idempotent — only
+    performs the import once per process lifetime.
     """
+    global _mailbox, _mailbox_lock, _mailbox_checked
+    if _mailbox_checked:
+        return _mailbox is not None
+    _mailbox_checked = True
+
+    try:
+        from plugins.hermes_dev_browser.dashboard.plugin_api import (
+            _results as results_dict,
+            _results_lock as lock,
+        )
+        _mailbox = results_dict
+        _mailbox_lock = lock
+        return True
+    except Exception:
+        return False
+
+
+def _get_result_in_process(request_id: str, timeout: float) -> dict | None:
+    """Poll the in-process mailbox. Returns the result dict or None on timeout."""
+    if _mailbox is None or _mailbox_lock is None:
+        return None
+
     deadline = time.time() + timeout
-    fpath = _mailbox_path(request_id)
+    while time.time() < deadline:
+        with _mailbox_lock:
+            entry = _mailbox.get(request_id)
+            if entry is not None:
+                _mailbox.pop(request_id, None)
+                return {"ready": True, "result": entry.get("result")}
+        time.sleep(_POLL_INTERVAL_S)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# HTTP result polling (fallback path)
+# ---------------------------------------------------------------------------
+
+def _get_result_http(request_id: str, timeout: float) -> dict:
+    """Poll the REST mailbox for a result. Returns the result dict or error."""
+    deadline = time.time() + timeout
+    url = f"{_api_base()}/result/{request_id}"
 
     while time.time() < deadline:
         try:
-            with open(fpath, "r") as f:
-                data = json.load(f)
-            # Consume — delete the file after reading
-            os.unlink(fpath)
-            return data
-        except (OSError, json.JSONDecodeError):
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                if data.get("ready"):
+                    return data
+        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
             pass
         time.sleep(_POLL_INTERVAL_S)
 
     return {"error": "timeout waiting for browser response"}
+
+
+# ---------------------------------------------------------------------------
+# Unified poll (tries in-process first, then HTTP)
+# ---------------------------------------------------------------------------
+
+def _poll_result(request_id: str, timeout: float = _POLL_TIMEOUT_S) -> dict:
+    """Poll for a result. Tries the in-process mailbox first (fast path),
+    then falls back to HTTP polling.
+
+    Returns a dict with either ``{"ready": True, "result": ...}`` on success
+    or ``{"error": "..."}`` on timeout.
+    """
+    # Fast path: in-process
+    if _try_load_in_process_mailbox():
+        result = _get_result_in_process(request_id, timeout)
+        if result is not None:
+            return result
+        return {"error": "timeout waiting for browser response"}
+
+    # Fallback: HTTP polling
+    return _get_result_http(request_id, timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +188,7 @@ def dev_browser_navigate(url: str, label: str = "") -> str:
 
     label = (label or "").strip()
     try:
-        ok = desktop_ui.emit("dev-browser.navigate", {"url": target, "label": label})
+        ok = desktop_ui.emit("hermes-dev-browser.navigate", {"url": target, "label": label})
     except Exception as exc:
         return tool_error(f"Failed to navigate the Dev Browser: {exc}")
     if not ok:
@@ -155,7 +211,7 @@ def dev_browser_eval(script: str) -> str:
     request_id = str(uuid.uuid4())
 
     try:
-        ok = desktop_ui.emit("dev-browser.eval", {
+        ok = desktop_ui.emit("hermes-dev-browser.eval", {
             "script": script,
             "request_id": request_id,
         })
@@ -185,7 +241,7 @@ def dev_browser_screenshot() -> str:
     request_id = str(uuid.uuid4())
 
     try:
-        ok = desktop_ui.emit("dev-browser.screenshot", {
+        ok = desktop_ui.emit("hermes-dev-browser.screenshot", {
             "request_id": request_id,
         })
     except Exception as exc:
@@ -212,7 +268,7 @@ def dev_browser_screenshot() -> str:
 def dev_browser_list_tabs() -> str:
     """List all open tabs in the Dev Browser."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.list-tabs", {"request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.list-tabs", {"request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -231,7 +287,7 @@ def dev_browser_new_tab(url: str, label: str = "") -> str:
     if not target:
         return tool_error("url is required")
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.new-tab", {"url": target, "label": label.strip(), "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.new-tab", {"url": target, "label": label.strip(), "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -247,7 +303,7 @@ def dev_browser_new_tab(url: str, label: str = "") -> str:
 def dev_browser_close_tab(index: int = -1) -> str:
     """Close a browser tab by index (0-based). Default: active tab."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.close-tab", {"index": index, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.close-tab", {"index": index, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -263,7 +319,7 @@ def dev_browser_close_tab(index: int = -1) -> str:
 def dev_browser_switch_tab(index: int) -> str:
     """Switch to a browser tab by index (0-based)."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.switch-tab", {"index": index, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.switch-tab", {"index": index, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -279,7 +335,7 @@ def dev_browser_switch_tab(index: int) -> str:
 def dev_browser_get_url() -> str:
     """Get the current URL and title of the active browser tab."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.get-url", {"request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.get-url", {"request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -299,7 +355,7 @@ def dev_browser_get_console(level: str = "") -> str:
         level: Optional filter — 'error', 'warn', or 'log'. Empty = all.
     """
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.get-console", {"level": level.strip(), "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.get-console", {"level": level.strip(), "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -316,7 +372,7 @@ def dev_browser_get_console(level: str = "") -> str:
 def dev_browser_clear_console() -> str:
     """Clear console entries for the active browser tab."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.clear-console", {"request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.clear-console", {"request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -332,7 +388,7 @@ def dev_browser_clear_console() -> str:
 def dev_browser_get_network() -> str:
     """Get recent network requests from the active browser tab."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.get-network", {"request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.get-network", {"request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -355,7 +411,7 @@ def dev_browser_set_device_mode(mode: str = "desktop") -> str:
     if mode not in ("desktop", "mobile", "tablet"):
         return tool_error("mode must be 'desktop', 'mobile', or 'tablet'")
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.set-device-mode", {"mode": mode, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.set-device-mode", {"mode": mode, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -371,7 +427,7 @@ def dev_browser_set_device_mode(mode: str = "desktop") -> str:
 def dev_browser_clear_cache() -> str:
     """Clear the browser cache and reload the active tab."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.clear-cache", {"request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.clear-cache", {"request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=10.0)
@@ -387,7 +443,7 @@ def dev_browser_clear_cache() -> str:
 def dev_browser_clear_cookies() -> str:
     """Clear cookies, localStorage, and sessionStorage for the active tab."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.clear-cookies", {"request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.clear-cookies", {"request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=10.0)
@@ -685,7 +741,7 @@ def dev_browser_pick_element(insert_to_composer: bool = True) -> str:
             is returned to the calling agent only.
     """
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.pick-element", {
+    ok = desktop_ui.emit("hermes-dev-browser.pick-element", {
         "request_id": request_id,
         "insert_to_composer": insert_to_composer,
     })
@@ -749,7 +805,7 @@ registry.register(
 def dev_browser_mouse_move(x: int, y: int) -> str:
     """Move the mouse cursor to (x, y) coordinates in the browser."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.mouse-move", {"x": x, "y": y, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.mouse-move", {"x": x, "y": y, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -765,7 +821,7 @@ def dev_browser_mouse_move(x: int, y: int) -> str:
 def dev_browser_click(x: int, y: int, button: str = "left", double: bool = False) -> str:
     """Click at (x, y) in the browser. button: 'left' or 'right'. double: True for double-click."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.click", {"x": x, "y": y, "button": button, "double": double, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.click", {"x": x, "y": y, "button": button, "double": double, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -781,7 +837,7 @@ def dev_browser_click(x: int, y: int, button: str = "left", double: bool = False
 def dev_browser_type(text: str) -> str:
     """Type text into the currently focused element in the browser."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.type", {"text": text, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.type", {"text": text, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=10.0)
@@ -797,7 +853,7 @@ def dev_browser_type(text: str) -> str:
 def dev_browser_press_key(key: str) -> str:
     """Press a keyboard key in the browser. Examples: 'Enter', 'Tab', 'Escape', 'ArrowDown', 'a'."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.press-key", {"key": key, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.press-key", {"key": key, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -813,7 +869,7 @@ def dev_browser_press_key(key: str) -> str:
 def dev_browser_scroll(x: int = 0, y: int = 0, direction: str = "down", amount: int = 300) -> str:
     """Scroll at (x, y) in the browser. direction: 'up' or 'down'. amount: pixels."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.scroll", {"x": x, "y": y, "direction": direction, "amount": amount, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.scroll", {"x": x, "y": y, "direction": direction, "amount": amount, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=5.0)
@@ -829,7 +885,7 @@ def dev_browser_scroll(x: int = 0, y: int = 0, direction: str = "down", amount: 
 def dev_browser_drag(x1: int, y1: int, x2: int, y2: int) -> str:
     """Drag from (x1, y1) to (x2, y2) in the browser."""
     request_id = str(uuid.uuid4())
-    ok = desktop_ui.emit("dev-browser.drag", {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "request_id": request_id})
+    ok = desktop_ui.emit("hermes-dev-browser.drag", {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "request_id": request_id})
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
     result = _poll_result(request_id, timeout=10.0)

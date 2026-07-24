@@ -31,7 +31,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLUGIN_ID = 'dev-browser'
+const PLUGIN_ID = 'hermes-dev-browser'
 
 // Real Chrome 131 UA (NOT Electron). Google blocks login from Electron
 // webviews by detecting Electron in the UA string.
@@ -916,14 +916,14 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.navigate
-  const d2 = host.onEvent('dev-browser.navigate', (event) => {
+  const d2 = host.onEvent('hermes-dev-browser.navigate', (event) => {
     const url = event?.payload?.url
     if (!url) return
     navigateActiveTab(url)
   })
 
   // dev-browser.eval
-  const d3 = host.onEvent('dev-browser.eval', (event) => {
+  const d3 = host.onEvent('hermes-dev-browser.eval', (event) => {
     const script = event?.payload?.script
     const requestId = event?.payload?.request_id
     if (!script) return
@@ -978,7 +978,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.screenshot
-  const d4 = host.onEvent('dev-browser.screenshot', (event) => {
+  const d4 = host.onEvent('hermes-dev-browser.screenshot', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1030,7 +1030,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.list-tabs
-  const d5 = host.onEvent('dev-browser.list-tabs', (event) => {
+  const d5 = host.onEvent('hermes-dev-browser.list-tabs', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1050,7 +1050,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.new-tab
-  const d6 = host.onEvent('dev-browser.new-tab', (event) => {
+  const d6 = host.onEvent('hermes-dev-browser.new-tab', (event) => {
     const url = event?.payload?.url
     const requestId = event?.payload?.request_id
     if (!url) {
@@ -1068,7 +1068,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.close-tab
-  const d7 = host.onEvent('dev-browser.close-tab', (event) => {
+  const d7 = host.onEvent('hermes-dev-browser.close-tab', (event) => {
     const requestId = event?.payload?.request_id
     const tabIndex = event?.payload?.index
     const tabId = event?.payload?.tab_id
@@ -1092,7 +1092,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.switch-tab
-  const d8 = host.onEvent('dev-browser.switch-tab', (event) => {
+  const d8 = host.onEvent('hermes-dev-browser.switch-tab', (event) => {
     const requestId = event?.payload?.request_id
     const index = event?.payload?.index
     const tabs = $tabs.get()
@@ -1110,7 +1110,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.get-url
-  const d9 = host.onEvent('dev-browser.get-url', (event) => {
+  const d9 = host.onEvent('hermes-dev-browser.get-url', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1131,7 +1131,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.get-console
-  const d10 = host.onEvent('dev-browser.get-console', (event) => {
+  const d10 = host.onEvent('hermes-dev-browser.get-console', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1160,7 +1160,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.clear-console
-  const d11 = host.onEvent('dev-browser.clear-console', (event) => {
+  const d11 = host.onEvent('hermes-dev-browser.clear-console', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1175,7 +1175,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.get-network
-  const d12 = host.onEvent('dev-browser.get-network', (event) => {
+  const d12 = host.onEvent('hermes-dev-browser.get-network', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1195,7 +1195,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.set-device-mode
-  const d13 = host.onEvent('dev-browser.set-device-mode', (event) => {
+  const d13 = host.onEvent('hermes-dev-browser.set-device-mode', (event) => {
     const requestId = event?.payload?.request_id
     const mode = event?.payload?.mode // 'desktop', 'mobile', 'tablet'
     if (!mode || !DEVICE_PRESETS[mode]) {
@@ -1223,7 +1223,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.clear-cache
-  const d14 = host.onEvent('dev-browser.clear-cache', (event) => {
+  const d14 = host.onEvent('hermes-dev-browser.clear-cache', (event) => {
     const requestId = event?.payload?.request_id
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
@@ -1243,7 +1243,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.clear-cookies
-  const d15 = host.onEvent('dev-browser.clear-cookies', (event) => {
+  const d15 = host.onEvent('hermes-dev-browser.clear-cookies', (event) => {
     const requestId = event?.payload?.request_id
     // Webview cookies are managed by the partition session.
     // We can clear them via the webview's session API.
@@ -1274,7 +1274,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.pick-element — start element picker, return result to agent
-  const d16 = host.onEvent('dev-browser.pick-element', (event) => {
+  const d16 = host.onEvent('hermes-dev-browser.pick-element', (event) => {
     const requestId = event?.payload?.request_id
     const insert = event?.payload?.insert_to_composer // if true, also insert into chat
     const tabs = $tabs.get()
@@ -1343,7 +1343,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.mouse-move — move mouse cursor to (x, y)
-  const d17 = host.onEvent('dev-browser.mouse-move', (event) => {
+  const d17 = host.onEvent('hermes-dev-browser.mouse-move', (event) => {
     const requestId = event?.payload?.request_id
     const x = event?.payload?.x
     const y = event?.payload?.y
@@ -1391,7 +1391,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.click — click at (x, y) with optional button and double-click
-  const d18 = host.onEvent('dev-browser.click', (event) => {
+  const d18 = host.onEvent('hermes-dev-browser.click', (event) => {
     const requestId = event?.payload?.request_id
     const x = event?.payload?.x
     const y = event?.payload?.y
@@ -1458,7 +1458,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.type — type text into the focused element
-  const d19 = host.onEvent('dev-browser.type', (event) => {
+  const d19 = host.onEvent('hermes-dev-browser.type', (event) => {
     const requestId = event?.payload?.request_id
     const text = event?.payload?.text || ''
     const tabs = $tabs.get()
@@ -1522,7 +1522,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.press-key — press a keyboard key
-  const d20 = host.onEvent('dev-browser.press-key', (event) => {
+  const d20 = host.onEvent('hermes-dev-browser.press-key', (event) => {
     const requestId = event?.payload?.request_id
     const key = event?.payload?.key || ''
     const tabs = $tabs.get()
@@ -1577,7 +1577,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.scroll — scroll at (x, y) in a direction
-  const d21 = host.onEvent('dev-browser.scroll', (event) => {
+  const d21 = host.onEvent('hermes-dev-browser.scroll', (event) => {
     const requestId = event?.payload?.request_id
     const x = event?.payload?.x || 0
     const y = event?.payload?.y || 0
@@ -1629,7 +1629,7 @@ function setupAgentEvents(ctx) {
   })
 
   // dev-browser.drag — drag from (x1,y1) to (x2,y2)
-  const d22 = host.onEvent('dev-browser.drag', (event) => {
+  const d22 = host.onEvent('hermes-dev-browser.drag', (event) => {
     const requestId = event?.payload?.request_id
     const x1 = event?.payload?.x1
     const y1 = event?.payload?.y1
@@ -2625,11 +2625,11 @@ export default {
         id: 'open',
         area: PALETTE_AREA,
         data: {
-          id: 'dev-browser.open',
+          id: 'hermes-dev-browser.open',
           label: 'Open Dev Browser',
           keywords: ['dev', 'browser', 'web', 'preview'],
           run: () => {
-            host.navigate('/dev-browser')
+            host.navigate('/hermes-dev-browser')
           },
         },
       },
@@ -2637,13 +2637,13 @@ export default {
         id: 'close',
         area: PALETTE_AREA,
         data: {
-          id: 'dev-browser.close',
+          id: 'hermes-dev-browser.close',
           label: 'Close Dev Browser',
           keywords: ['dev', 'browser', 'close', 'hide'],
           run: () => {
             host.request('plugins.manage', {
               action: 'toggle',
-              name: 'dev-browser',
+              name: 'hermes-dev-browser',
               enable: false,
             }).catch(() => {})
           },
@@ -2653,7 +2653,7 @@ export default {
         id: 'toggle-devtools',
         area: PALETTE_AREA,
         data: {
-          id: 'dev-browser.toggle-devtools',
+          id: 'hermes-dev-browser.toggle-devtools',
           label: 'Dev Browser: Toggle DevTools',
           keywords: ['dev', 'browser', 'devtools', 'inspect'],
           run: () => {
@@ -2668,7 +2668,7 @@ export default {
         id: 'new-tab',
         area: PALETTE_AREA,
         data: {
-          id: 'dev-browser.new-tab',
+          id: 'hermes-dev-browser.new-tab',
           label: 'Dev Browser: New Tab',
           keywords: ['dev', 'browser', 'tab', 'new'],
           run: () => addTab($homeUrl.get()),
@@ -2678,7 +2678,7 @@ export default {
         id: 'clear-history',
         area: PALETTE_AREA,
         data: {
-          id: 'dev-browser.clear-history',
+          id: 'hermes-dev-browser.clear-history',
           label: 'Dev Browser: Clear History',
           keywords: ['dev', 'browser', 'history', 'clear'],
           run: () => {
@@ -2691,7 +2691,7 @@ export default {
         id: 'pick-element',
         area: PALETTE_AREA,
         data: {
-          id: 'dev-browser.pick-element',
+          id: 'hermes-dev-browser.pick-element',
           label: 'Dev Browser: Pick Element',
           keywords: ['dev', 'browser', 'pick', 'element', 'inspect', 'selector'],
           run: () => startElementPicker(),
@@ -2705,7 +2705,7 @@ export default {
         id: 'reload',
         area: KEYBINDS_AREA,
         data: {
-          id: 'dev-browser.reload',
+          id: 'hermes-dev-browser.reload',
           label: 'Dev Browser: Reload',
           category: 'view',
           defaults: ['mod+r'],
@@ -2716,7 +2716,7 @@ export default {
         id: 'toggle-devtools-kb',
         area: KEYBINDS_AREA,
         data: {
-          id: 'dev-browser.toggle-devtools',
+          id: 'hermes-dev-browser.toggle-devtools',
           label: 'Dev Browser: Toggle DevTools',
           category: 'view',
           defaults: ['mod+alt+i'],
@@ -2732,7 +2732,7 @@ export default {
         id: 'focus-url',
         area: KEYBINDS_AREA,
         data: {
-          id: 'dev-browser.focus-url',
+          id: 'hermes-dev-browser.focus-url',
           label: 'Dev Browser: Focus URL Bar',
           category: 'view',
           defaults: ['mod+l'],

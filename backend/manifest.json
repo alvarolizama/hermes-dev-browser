@@ -1,4 +1,8 @@
 {
-  "name": "dev-browser",
-  "api": "plugin_api.py"
+  "name": "hermes-dev-browser",
+  "api": "plugin_api.py",
+  "label": "Dev Browser",
+  "description": "Full-featured web browser pane with DevTools, multi-tab, OAuth support, element picker, and agent control",
+  "icon": "Monitor",
+  "version": "1.0.0"
 }

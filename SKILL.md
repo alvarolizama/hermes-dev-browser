@@ -188,8 +188,8 @@ The communication flow is:
 
 ```
 Agent → dev_browser_click(x=200, y=300)
-  → desktop_ui.emit("dev-browser.click", {x, y, request_id})
-  → Plugin JS receives via host.onEvent("dev-browser.click")
+  → desktop_ui.emit("hermes-dev-browser.click", {x, y, request_id})
+  → Plugin JS receives via host.onEvent("hermes-dev-browser.click")
   → webview.sendInputEvent({type:'mouseDown', x:200, y:300, button:'left'})
     ↳ (fails?) → webview.executeJavaScript("element.dispatchEvent(new MouseEvent(...))")
   → result → ctx.rest('/result', {POST, {request_id, result:{success, method}}})
