@@ -876,6 +876,37 @@ function createWebviewForTab(tabId, url, hostDiv) {
   webview.addEventListener('did-get-redirect-request', onResponse)
   webview.addEventListener('new-window', onNewWindow)
 
+  // Crash recovery — if the webview renderer process crashes, reload it
+  const onCrashed = () => {
+    appendConsoleEntry(tabId, {
+      level: 2,
+      message: 'Webview renderer process crashed — reloading tab',
+    })
+    // Force a reload by re-setting the src attribute
+    try {
+      const currentUrl = currentUrlMap.get(tabId) || url
+      webview.setAttribute('src', currentUrl)
+    } catch {}
+  }
+
+  const onUnresponsive = () => {
+    appendConsoleEntry(tabId, {
+      level: 1,
+      message: 'Webview became unresponsive',
+    })
+  }
+
+  const onResponsive = () => {
+    appendConsoleEntry(tabId, {
+      level: 0,
+      message: 'Webview became responsive again',
+    })
+  }
+
+  webview.addEventListener('crashed', onCrashed)
+  webview.addEventListener('unresponsive', onUnresponsive)
+  webview.addEventListener('responsive', onResponsive)
+
   // Attach to DOM
   hostDiv.appendChild(webview)
 
@@ -894,6 +925,9 @@ function createWebviewForTab(tabId, url, hostDiv) {
     webview.removeEventListener('did-get-response-details', onResponse)
     webview.removeEventListener('did-get-redirect-request', onResponse)
     webview.removeEventListener('new-window', onNewWindow)
+    webview.removeEventListener('crashed', onCrashed)
+    webview.removeEventListener('unresponsive', onUnresponsive)
+    webview.removeEventListener('responsive', onResponsive)
   }
 
   return webview
@@ -2412,7 +2446,7 @@ function WebviewHost({ tab }) {
               updateTab(tab.id, { error: null })
               reloadActiveTab()
             },
-            t: usePluginI18n(PLUGIN_ID),
+            t,
           })
         : null,
     ],
