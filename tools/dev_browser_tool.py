@@ -80,6 +80,19 @@ def _try_load_in_process_mailbox() -> bool:
         return _mailbox is not None
     _mailbox_checked = True
 
+    # The dashboard loads the plugin module under a dynamic name
+    # (hermes_dashboard_plugin_hermes-dev-browser) via importlib. Try that
+    # first by scanning sys.modules, then fall back to the old path.
+    import sys
+    for mod_name, mod in list(sys.modules.items()):
+        if "hermes" in mod_name and ("dev_browser" in mod_name or "dev-browser" in mod_name) and "plugin" in mod_name:
+            results = getattr(mod, "_results", None)
+            lock = getattr(mod, "_results_lock", None)
+            if results is not None and lock is not None:
+                _mailbox = results
+                _mailbox_lock = lock
+                return True
+
     try:
         from plugins.hermes_dev_browser.dashboard.plugin_api import (
             _results as results_dict,
@@ -117,9 +130,15 @@ def _get_result_http(request_id: str, timeout: float) -> dict:
     deadline = time.time() + timeout
     url = f"{_api_base()}/result/{request_id}"
 
+    # In loopback mode, the dashboard gates on _SESSION_TOKEN. Attach it
+    # so the HTTP fallback works without a browser cookie.
+    session_token = os.environ.get("HERMES_DASHBOARD_SESSION_TOKEN", "")
+
     while time.time() < deadline:
         try:
             req = urllib.request.Request(url, method="GET")
+            if session_token:
+                req.add_header("X-Hermes-Session-Token", session_token)
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode())
                 if data.get("ready"):

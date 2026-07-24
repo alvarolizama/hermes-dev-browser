@@ -19,10 +19,13 @@ import {
   Separator,
   GlyphSpinner,
   icons,
-  PANES_AREA,
-  PALETTE_AREA,
-  KEYBINDS_AREA
 } from '@hermes/plugin-sdk'
+
+// Area constants are not available in the runtime SDK shim (lazy getters
+// not enumerated by Object.keys at shim-build time). Use literal values.
+const PANES_AREA = 'panes'
+const PALETTE_AREA = 'palette'
+const KEYBINDS_AREA = 'keybinds'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
@@ -112,12 +115,12 @@ function normalizeUrl(input) {
   return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
 }
 
-/** Compact a URL for display: strip protocol, show host+path. */
+/** Compact a URL for display: show only the host. */
 function compactUrl(url) {
   try {
     const u = new URL(url)
     if (u.protocol === 'file:') return decodeURIComponent(u.pathname)
-    return `${u.host}${u.pathname === '/' ? '' : u.pathname}${u.search}`
+    return u.host
   } catch {
     return url
   }
