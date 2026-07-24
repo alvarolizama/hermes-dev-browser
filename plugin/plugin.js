@@ -2614,8 +2614,7 @@ export default {
     ctx.register({
       id: 'pane',
       area: PANES_AREA,
-      title: 'Dev Browser',
-      data: { placement: 'right', width: '480px' },
+      data: { placement: 'right', width: '480px', title: 'Dev Browser' },
       render: () => jsx(DevBrowserPane, {}),
     })
 
