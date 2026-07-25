@@ -1041,3 +1041,699 @@ registry.register(name="dev_browser_type", toolset="terminal", schema=TYPE_SCHEM
 registry.register(name="dev_browser_press_key", toolset="terminal", schema=PRESS_KEY_SCHEMA, handler=lambda args, **kw: dev_browser_press_key(key=args.get("key","")), check_fn=check_dev_browser_requirements, emoji="🔑")
 registry.register(name="dev_browser_scroll", toolset="terminal", schema=SCROLL_SCHEMA, handler=lambda args, **kw: dev_browser_scroll(x=args.get("x",0), y=args.get("y",0), direction=args.get("direction","down"), amount=args.get("amount",300)), check_fn=check_dev_browser_requirements, emoji="📜")
 registry.register(name="dev_browser_drag", toolset="terminal", schema=DRAG_SCHEMA, handler=lambda args, **kw: dev_browser_drag(x1=args.get("x1",0), y1=args.get("y1",0), x2=args.get("x2",0), y2=args.get("y2",0)), check_fn=check_dev_browser_requirements, emoji="✋")
+
+
+# ===========================================================================
+# Extended Dev Browser tools
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Functions
+# ---------------------------------------------------------------------------
+
+def dev_browser_wait_for_selector(selector: str, timeout: int = 10000, visible: bool = True) -> str:
+    """Wait for an element matching the CSS selector to appear in the page.
+
+    Args:
+        selector: CSS selector to wait for.
+        timeout: Maximum wait time in milliseconds.
+        visible: If True, wait for the element to be visible.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector to wait for.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.wait-for-selector", {
+        "selector": selector.strip(),
+        "timeout": timeout,
+        "visible": visible,
+        "request_id": request_id,
+    })
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=timeout / 1000.0 + 2.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_get_page_text() -> str:
+    """Get the full text content of the current page."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.get-page-text", {"request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=10.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    text = result.get("result", "")
+    if not isinstance(text, str):
+        text = str(text) if text is not None else ""
+    return json.dumps({"success": True, "text": text, "length": len(text)}, ensure_ascii=False)
+
+
+def dev_browser_get_dom_snapshot(max_depth: int = 5) -> str:
+    """Get a snapshot of the DOM tree up to the specified depth.
+
+    Args:
+        max_depth: Maximum depth of the DOM tree to traverse.
+    """
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.get-dom-snapshot", {"max_depth": max_depth, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=10.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, "snapshot": result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_fill_form(fields: dict) -> str:
+    """Fill form fields with values.
+
+    Args:
+        fields: A dictionary mapping CSS selectors to values.
+    """
+    if not fields or not isinstance(fields, dict):
+        return tool_error("fields is required — a dict of selector→value pairs.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.fill-form", {"fields": fields, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=15.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_wait_for_navigation(timeout: int = 15000) -> str:
+    """Wait for page navigation to complete.
+
+    Args:
+        timeout: Maximum wait time in milliseconds.
+    """
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.wait-for-navigation", {"timeout": timeout, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=timeout / 1000.0 + 2.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_hover(selector: str) -> str:
+    """Hover over an element matching the CSS selector.
+
+    Args:
+        selector: CSS selector of the element to hover over.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector of the element to hover over.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.hover", {"selector": selector.strip(), "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_select_option(selector: str, value: str) -> str:
+    """Select an option in a <select> element.
+
+    Args:
+        selector: CSS selector of the select element.
+        value: Value of the option to select.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector of the select element.")
+    if not value:
+        return tool_error("value is required — the value of the option to select.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.select-option", {"selector": selector.strip(), "value": value, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_press_key_combo(keys: list) -> str:
+    """Press a keyboard key combination.
+
+    Args:
+        keys: A list of keys to press simultaneously, e.g. ["ctrl", "Enter"].
+    """
+    if not keys or not isinstance(keys, list):
+        return tool_error("keys is required — a list of keys to press simultaneously.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.press-key-combo", {"keys": keys, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_upload_file(selector: str, file_path: str) -> str:
+    """Upload a file to a file input element.
+
+    Args:
+        selector: CSS selector of the file input element.
+        file_path: Path to the file to upload.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector of the file input element.")
+    if not file_path or not file_path.strip():
+        return tool_error("file_path is required — the path to the file to upload.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.upload-file", {"selector": selector.strip(), "file_path": file_path.strip(), "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=15.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_handle_dialog(action: str = "accept", prompt_text: str = "") -> str:
+    """Handle a browser dialog (alert, confirm, prompt).
+
+    Args:
+        action: 'accept' or 'dismiss'.
+        prompt_text: Text to enter in a prompt dialog (only used if action is 'accept').
+    """
+    if action not in ("accept", "dismiss"):
+        return tool_error("action must be 'accept' or 'dismiss'")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.handle-dialog", {"action": action, "prompt_text": prompt_text, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_get_cookies() -> str:
+    """Get all cookies for the current page."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.get-cookies", {"request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    cookies = result.get("result", [])
+    return json.dumps({"success": True, "cookies": cookies, "count": len(cookies) if isinstance(cookies, list) else 0}, ensure_ascii=False)
+
+
+def dev_browser_get_local_storage(key: str = "") -> str:
+    """Get localStorage entries for the current page.
+
+    Args:
+        key: Optional specific key to retrieve. If empty, returns all entries.
+    """
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.get-local-storage", {"key": key, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_get_computed_style(selector: str, properties: list = None) -> str:
+    """Get computed CSS style for an element.
+
+    Args:
+        selector: CSS selector of the element.
+        properties: Optional list of CSS property names to retrieve. If empty, returns all.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector of the element.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.get-computed-style", {"selector": selector.strip(), "properties": properties or [], "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_intercept_network(url_pattern: str = "", method: str = "", timeout: int = 10000) -> str:
+    """Intercept network requests matching a URL pattern.
+
+    Args:
+        url_pattern: URL pattern to match (empty = match all).
+        method: HTTP method to match (empty = match all).
+        timeout: Maximum wait time in milliseconds.
+    """
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.intercept-network", {"url_pattern": url_pattern, "method": method, "timeout": timeout, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=timeout / 1000.0 + 2.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_screenshot_element(selector: str) -> str:
+    """Capture a screenshot of a specific element.
+
+    Args:
+        selector: CSS selector of the element to screenshot.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector of the element to screenshot.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.screenshot-element", {"selector": selector.strip(), "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=10.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, "image_data_url": result.get("result", "")}, ensure_ascii=False)
+
+
+def dev_browser_execute_script(script: str) -> str:
+    """Execute a multi-line JavaScript script in the browser and return the result.
+
+    Args:
+        script: JavaScript code to execute in the browser page context.
+    """
+    if not script or not script.strip():
+        return tool_error("script is required — JavaScript to execute in the browser.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.execute-script", {"script": script, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=30.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, "result": result.get("result"), "request_id": request_id}, ensure_ascii=False)
+
+
+def dev_browser_pdf_export() -> str:
+    """Export the current page as a PDF."""
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.pdf-export", {"request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=30.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_bookmark_management(action: str, url: str = "", title: str = "") -> str:
+    """Add, remove, or list bookmarks.
+
+    Args:
+        action: 'add', 'remove', or 'list'.
+        url: URL of the bookmark (required for 'add' and 'remove').
+        title: Title for the bookmark (optional, used with 'add').
+    """
+    if action not in ("add", "remove", "list"):
+        return tool_error("action must be 'add', 'remove', or 'list'")
+    if action in ("add", "remove") and (not url or not url.strip()):
+        return tool_error(f"url is required for action '{action}'")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.bookmark-management", {"action": action, "url": url.strip(), "title": title.strip(), "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=10.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_set_viewport(width: int, height: int) -> str:
+    """Set the browser viewport size.
+
+    Args:
+        width: Viewport width in pixels.
+        height: Viewport height in pixels.
+    """
+    if not isinstance(width, int) or width <= 0:
+        return tool_error("width must be a positive integer (pixels).")
+    if not isinstance(height, int) or height <= 0:
+        return tool_error("height must be a positive integer (pixels).")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.set-viewport", {"width": width, "height": height, "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+def dev_browser_get_element_info(selector: str) -> str:
+    """Get detailed information about an element.
+
+    Args:
+        selector: CSS selector of the element.
+    """
+    if not selector or not selector.strip():
+        return tool_error("selector is required — a CSS selector of the element.")
+    request_id = str(uuid.uuid4())
+    ok = desktop_ui.emit("hermes-dev-browser.get-element-info", {"selector": selector.strip(), "request_id": request_id})
+    if not ok:
+        return tool_error("Dev Browser is only available in the Hermes desktop app.")
+    result = _poll_result(request_id, timeout=5.0)
+    if "error" in result:
+        return json.dumps(result, ensure_ascii=False)
+    return json.dumps({"success": True, **result.get("result", {})}, ensure_ascii=False)
+
+
+# ---------------------------------------------------------------------------
+# Schemas for extended tools
+# ---------------------------------------------------------------------------
+
+WAIT_FOR_SELECTOR_SCHEMA = {
+    "name": "dev_browser_wait_for_selector",
+    "description": (
+        "Wait for an element matching a CSS selector to appear in the Dev Browser. "
+        "Useful for waiting for dynamic content to load before interacting with it."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector to wait for."},
+            "timeout": {"type": "integer", "description": "Maximum wait time in milliseconds.", "default": 10000},
+            "visible": {"type": "boolean", "description": "If true, wait for the element to be visible.", "default": True},
+        },
+        "required": ["selector"],
+    },
+}
+
+GET_PAGE_TEXT_SCHEMA = {
+    "name": "dev_browser_get_page_text",
+    "description": "Get the full text content of the current page in the Dev Browser. Returns text and its length.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
+GET_DOM_SNAPSHOT_SCHEMA = {
+    "name": "dev_browser_get_dom_snapshot",
+    "description": (
+        "Get a snapshot of the DOM tree in the Dev Browser, up to a specified depth. "
+        "Useful for understanding page structure."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "max_depth": {"type": "integer", "description": "Maximum depth of the DOM tree to traverse.", "default": 5},
+        },
+    },
+}
+
+FILL_FORM_SCHEMA = {
+    "name": "dev_browser_fill_form",
+    "description": (
+        "Fill multiple form fields at once in the Dev Browser. Pass a dictionary "
+        "mapping CSS selectors to the values to fill in each field."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "fields": {
+                "type": "object",
+                "description": "A dictionary mapping CSS selectors to values to fill in each field.",
+            },
+        },
+        "required": ["fields"],
+    },
+}
+
+WAIT_FOR_NAVIGATION_SCHEMA = {
+    "name": "dev_browser_wait_for_navigation",
+    "description": "Wait for page navigation to complete in the Dev Browser. Useful after clicking a link or submitting a form.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "timeout": {"type": "integer", "description": "Maximum wait time in milliseconds.", "default": 15000},
+        },
+    },
+}
+
+HOVER_SCHEMA = {
+    "name": "dev_browser_hover",
+    "description": "Hover over an element in the Dev Browser, identified by CSS selector. Triggers hover events and CSS :hover states.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector of the element to hover over."},
+        },
+        "required": ["selector"],
+    },
+}
+
+SELECT_OPTION_SCHEMA = {
+    "name": "dev_browser_select_option",
+    "description": "Select an option in a <select> dropdown element in the Dev Browser.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector of the select element."},
+            "value": {"type": "string", "description": "Value of the option to select."},
+        },
+        "required": ["selector", "value"],
+    },
+}
+
+PRESS_KEY_COMBO_SCHEMA = {
+    "name": "dev_browser_press_key_combo",
+    "description": (
+        "Press a keyboard key combination in the Dev Browser. Pass a list of keys "
+        "to press simultaneously, e.g. [\"ctrl\", \"Enter\"] or [\"shift\", \"Tab\"]."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "keys": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "A list of keys to press simultaneously, e.g. [\"ctrl\", \"Enter\"].",
+            },
+        },
+        "required": ["keys"],
+    },
+}
+
+UPLOAD_FILE_SCHEMA = {
+    "name": "dev_browser_upload_file",
+    "description": "Upload a file to a file input element in the Dev Browser.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector of the file input element."},
+            "file_path": {"type": "string", "description": "Path to the file to upload."},
+        },
+        "required": ["selector", "file_path"],
+    },
+}
+
+HANDLE_DIALOG_SCHEMA = {
+    "name": "dev_browser_handle_dialog",
+    "description": (
+        "Handle a browser dialog (alert, confirm, prompt) in the Dev Browser. "
+        "Choose to accept or dismiss, and optionally provide text for prompt dialogs."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["accept", "dismiss"],
+                "description": "Whether to accept or dismiss the dialog.",
+                "default": "accept",
+            },
+            "prompt_text": {
+                "type": "string",
+                "description": "Text to enter in a prompt dialog (only used when action is 'accept').",
+                "default": "",
+            },
+        },
+    },
+}
+
+GET_COOKIES_SCHEMA = {
+    "name": "dev_browser_get_cookies",
+    "description": "Get all cookies for the current page in the Dev Browser. Returns cookies array and count.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
+GET_LOCAL_STORAGE_SCHEMA = {
+    "name": "dev_browser_get_local_storage",
+    "description": (
+        "Get localStorage entries for the current page in the Dev Browser. "
+        "Pass a key to retrieve a specific entry, or omit to get all entries."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "key": {"type": "string", "description": "Optional specific key to retrieve. If empty, returns all entries."},
+        },
+    },
+}
+
+GET_COMPUTED_STYLE_SCHEMA = {
+    "name": "dev_browser_get_computed_style",
+    "description": (
+        "Get computed CSS style for an element in the Dev Browser. "
+        "Optionally filter to specific properties."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector of the element."},
+            "properties": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of CSS property names to retrieve. If empty, returns all.",
+            },
+        },
+        "required": ["selector"],
+    },
+}
+
+INTERCEPT_NETWORK_SCHEMA = {
+    "name": "dev_browser_intercept_network",
+    "description": (
+        "Intercept network requests matching a URL pattern in the Dev Browser. "
+        "Useful for capturing API calls and responses."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "url_pattern": {"type": "string", "description": "URL pattern to match (empty = match all).", "default": ""},
+            "method": {"type": "string", "description": "HTTP method to match (empty = match all).", "default": ""},
+            "timeout": {"type": "integer", "description": "Maximum wait time in milliseconds.", "default": 10000},
+        },
+    },
+}
+
+SCREENSHOT_ELEMENT_SCHEMA = {
+    "name": "dev_browser_screenshot_element",
+    "description": "Capture a screenshot of a specific element in the Dev Browser, identified by CSS selector. Returns image data URL.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector of the element to screenshot."},
+        },
+        "required": ["selector"],
+    },
+}
+
+EXECUTE_SCRIPT_SCHEMA = {
+    "name": "dev_browser_execute_script",
+    "description": (
+        "Execute a multi-line JavaScript script in the Dev Browser and return the result. "
+        "The script runs in the page's context. Useful for complex DOM manipulation or "
+        "data extraction that requires multiple statements."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "script": {"type": "string", "description": "Multi-line JavaScript to execute in the browser page context."},
+        },
+        "required": ["script"],
+    },
+}
+
+PDF_EXPORT_SCHEMA = {
+    "name": "dev_browser_pdf_export",
+    "description": "Export the current page in the Dev Browser as a PDF.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+    },
+}
+
+BOOKMARK_MANAGEMENT_SCHEMA = {
+    "name": "dev_browser_bookmark_management",
+    "description": (
+        "Manage bookmarks in the Dev Browser. Add a new bookmark, remove an existing one, "
+        "or list all bookmarks."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["add", "remove", "list"],
+                "description": "Bookmark action: 'add', 'remove', or 'list'.",
+            },
+            "url": {"type": "string", "description": "URL of the bookmark (required for 'add' and 'remove')."},
+            "title": {"type": "string", "description": "Title for the bookmark (optional, used with 'add')."},
+        },
+        "required": ["action"],
+    },
+}
+
+SET_VIEWPORT_SCHEMA = {
+    "name": "dev_browser_set_viewport",
+    "description": "Set the viewport size of the Dev Browser in pixels.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "width": {"type": "integer", "description": "Viewport width in pixels."},
+            "height": {"type": "integer", "description": "Viewport height in pixels."},
+        },
+        "required": ["width", "height"],
+    },
+}
+
+GET_ELEMENT_INFO_SCHEMA = {
+    "name": "dev_browser_get_element_info",
+    "description": (
+        "Get detailed information about an element in the Dev Browser, including "
+        "tag name, attributes, position, size, and text content."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "selector": {"type": "string", "description": "CSS selector of the element."},
+        },
+        "required": ["selector"],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Registration for extended tools
+# ---------------------------------------------------------------------------
+
+registry.register(name="dev_browser_wait_for_selector", toolset="terminal", schema=WAIT_FOR_SELECTOR_SCHEMA, handler=lambda args, **kw: dev_browser_wait_for_selector(selector=args.get("selector",""), timeout=args.get("timeout",10000), visible=args.get("visible",True)), check_fn=check_dev_browser_requirements, emoji="⏳")
+registry.register(name="dev_browser_get_page_text", toolset="terminal", schema=GET_PAGE_TEXT_SCHEMA, handler=lambda args, **kw: dev_browser_get_page_text(), check_fn=check_dev_browser_requirements, emoji="📄")
+registry.register(name="dev_browser_get_dom_snapshot", toolset="terminal", schema=GET_DOM_SNAPSHOT_SCHEMA, handler=lambda args, **kw: dev_browser_get_dom_snapshot(max_depth=args.get("max_depth",5)), check_fn=check_dev_browser_requirements, emoji="🌳")
+registry.register(name="dev_browser_fill_form", toolset="terminal", schema=FILL_FORM_SCHEMA, handler=lambda args, **kw: dev_browser_fill_form(fields=args.get("fields",{})), check_fn=check_dev_browser_requirements, emoji="📝")
+registry.register(name="dev_browser_wait_for_navigation", toolset="terminal", schema=WAIT_FOR_NAVIGATION_SCHEMA, handler=lambda args, **kw: dev_browser_wait_for_navigation(timeout=args.get("timeout",15000)), check_fn=check_dev_browser_requirements, emoji="⏱️")
+registry.register(name="dev_browser_hover", toolset="terminal", schema=HOVER_SCHEMA, handler=lambda args, **kw: dev_browser_hover(selector=args.get("selector","")), check_fn=check_dev_browser_requirements, emoji="🖱️")
+registry.register(name="dev_browser_select_option", toolset="terminal", schema=SELECT_OPTION_SCHEMA, handler=lambda args, **kw: dev_browser_select_option(selector=args.get("selector",""), value=args.get("value","")), check_fn=check_dev_browser_requirements, emoji="📋")
+registry.register(name="dev_browser_press_key_combo", toolset="terminal", schema=PRESS_KEY_COMBO_SCHEMA, handler=lambda args, **kw: dev_browser_press_key_combo(keys=args.get("keys",[])), check_fn=check_dev_browser_requirements, emoji="⌨️")
+registry.register(name="dev_browser_upload_file", toolset="terminal", schema=UPLOAD_FILE_SCHEMA, handler=lambda args, **kw: dev_browser_upload_file(selector=args.get("selector",""), file_path=args.get("file_path","")), check_fn=check_dev_browser_requirements, emoji="📎")
+registry.register(name="dev_browser_handle_dialog", toolset="terminal", schema=HANDLE_DIALOG_SCHEMA, handler=lambda args, **kw: dev_browser_handle_dialog(action=args.get("action","accept"), prompt_text=args.get("prompt_text","")), check_fn=check_dev_browser_requirements, emoji="💬")
+registry.register(name="dev_browser_get_cookies", toolset="terminal", schema=GET_COOKIES_SCHEMA, handler=lambda args, **kw: dev_browser_get_cookies(), check_fn=check_dev_browser_requirements, emoji="🍪")
+registry.register(name="dev_browser_get_local_storage", toolset="terminal", schema=GET_LOCAL_STORAGE_SCHEMA, handler=lambda args, **kw: dev_browser_get_local_storage(key=args.get("key","")), check_fn=check_dev_browser_requirements, emoji="💾")
+registry.register(name="dev_browser_get_computed_style", toolset="terminal", schema=GET_COMPUTED_STYLE_SCHEMA, handler=lambda args, **kw: dev_browser_get_computed_style(selector=args.get("selector",""), properties=args.get("properties",[])), check_fn=check_dev_browser_requirements, emoji="🎨")
+registry.register(name="dev_browser_intercept_network", toolset="terminal", schema=INTERCEPT_NETWORK_SCHEMA, handler=lambda args, **kw: dev_browser_intercept_network(url_pattern=args.get("url_pattern",""), method=args.get("method",""), timeout=args.get("timeout",10000)), check_fn=check_dev_browser_requirements, emoji="📡")
+registry.register(name="dev_browser_screenshot_element", toolset="terminal", schema=SCREENSHOT_ELEMENT_SCHEMA, handler=lambda args, **kw: dev_browser_screenshot_element(selector=args.get("selector","")), check_fn=check_dev_browser_requirements, emoji="📸")
+registry.register(name="dev_browser_execute_script", toolset="terminal", schema=EXECUTE_SCRIPT_SCHEMA, handler=lambda args, **kw: dev_browser_execute_script(script=args.get("script","")), check_fn=check_dev_browser_requirements, emoji="📜")
+registry.register(name="dev_browser_pdf_export", toolset="terminal", schema=PDF_EXPORT_SCHEMA, handler=lambda args, **kw: dev_browser_pdf_export(), check_fn=check_dev_browser_requirements, emoji="📄")
+registry.register(name="dev_browser_bookmark_management", toolset="terminal", schema=BOOKMARK_MANAGEMENT_SCHEMA, handler=lambda args, **kw: dev_browser_bookmark_management(action=args.get("action",""), url=args.get("url",""), title=args.get("title","")), check_fn=check_dev_browser_requirements, emoji="🔖")
+registry.register(name="dev_browser_set_viewport", toolset="terminal", schema=SET_VIEWPORT_SCHEMA, handler=lambda args, **kw: dev_browser_set_viewport(width=args.get("width",0), height=args.get("height",0)), check_fn=check_dev_browser_requirements, emoji="📐")
+registry.register(name="dev_browser_get_element_info", toolset="terminal", schema=GET_ELEMENT_INFO_SCHEMA, handler=lambda args, **kw: dev_browser_get_element_info(selector=args.get("selector","")), check_fn=check_dev_browser_requirements, emoji="🔍")
