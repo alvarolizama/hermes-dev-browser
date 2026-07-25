@@ -121,6 +121,27 @@ _TOOLS = (
 )
 
 
+def _wrap_handler(fn):
+    """Adapt a plugin tool function to the registry's dispatch convention.
+
+    The registry calls ``handler(args_dict, task_id=..., session_id=...)`` —
+    a positional dict plus injected kwargs. Plugin functions are defined
+    with named parameters (``url``, ``label``, ``x``, ``y``…) and don't
+    accept either. This wrapper extracts matching keys from the dict and
+    swallows the injected kwargs.
+    """
+    import inspect
+    sig = inspect.signature(fn)
+    param_names = list(sig.parameters.keys())
+
+    def _wrapper(args: dict, **_injected):
+        call_args = {p: args[p] for p in param_names if p in args}
+        return fn(**call_args)
+
+    _wrapper.__name__ = fn.__name__
+    return _wrapper
+
+
 def register(ctx) -> None:
     """Register all Dev Browser tools. Called once by the plugin loader."""
     for name, schema, handler, emoji in _TOOLS:
@@ -128,7 +149,7 @@ def register(ctx) -> None:
             name=name,
             toolset="terminal",
             schema=schema,
-            handler=handler,
+            handler=_wrap_handler(handler),
             check_fn=check_dev_browser_requirements,
             emoji=emoji,
         )

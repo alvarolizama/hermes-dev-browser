@@ -1,7 +1,7 @@
 ---
 name: hermes-dev-browser
 description: "Control the Dev Browser pane in Hermes Desktop — 41 tools for navigation, DOM inspection, form automation, mouse/keyboard simulation, network interception, screenshots, tab management, and more."
-version: 2.0.0
+version: 2.1.0
 license: MIT
 ---
 
@@ -218,6 +218,7 @@ All x/y coordinates are **relative to the webview's top-left corner**, not the s
 - **`sendInputEvent` requires window focus.** If the Hermes window isn't focused, native input events may not work. The JS fallback doesn't have this requirement.
 - **`dev_browser_eval` vs `dev_browser_execute_script`**: Use `eval` for single-line synchronous expressions. Use `execute_script` for multi-line async code with `await`.
 - **`dev_browser_fill_form` requires CSS selectors as keys**, not element references. The form fields must exist in the DOM before calling.
+- **Handler wrapper required for plugin tools.** The Hermes registry calls handlers as `handler(args_dict, task_id=..., session_id=...)` — a positional dict plus injected kwargs. Plugin tool functions are defined with named parameters (`url`, `x`, `selector`…) and don't accept either. The `_wrap_handler(fn)` function in `__init__.py` uses `inspect.signature` to extract the right keys from the dict and swallows the injected kwargs. Without this wrapper, every tool call fails with `TypeError: got an unexpected keyword argument 'task_id'`. This is the same pattern built-in Hermes tools use (lambda wrappers like `lambda a, **kw: ...`).
 
 ## Architecture (for context, not for action)
 

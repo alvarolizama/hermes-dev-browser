@@ -352,8 +352,9 @@ Tools are registered via the Hermes plugin system, not by editing core files:
 
 1. **`__init__.py`** has a `register(ctx)` function called by the plugin loader
 2. It calls `ctx.register_tool()` for each of the 41 tools, registering them in the `terminal` toolset
-3. All tools are gated on `HERMES_DESKTOP` via `check_fn` — they only appear when the desktop app is running
-4. **Relative imports** (`from .tools import ...`) ensure the plugin loads correctly under the `hermes_plugins.<slug>` namespace that Hermes' plugin loader creates — no need to edit `toolsets.py` or `hermes-agent/tools/`
+3. Each handler is wrapped with `_wrap_handler(fn)` — an adapter that bridges the gap between the registry's dispatch convention (`handler(args_dict, task_id=..., session_id=...)`) and the plugin functions' named parameters (`url`, `x`, `selector`…). Without this wrapper, all tool calls fail with `TypeError: got an unexpected keyword argument 'task_id'`
+4. All tools are gated on `HERMES_DESKTOP` via `check_fn` — they only appear when the desktop app is running
+5. **Relative imports** (`from .tools import ...`) ensure the plugin loads correctly under the `hermes_plugins.<slug>` namespace that Hermes' plugin loader creates — no need to edit `toolsets.py` or `hermes-agent/tools/`
 
 ## How it works
 
