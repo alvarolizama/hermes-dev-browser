@@ -1822,7 +1822,701 @@ function setupAgentEvents(ctx) {
     }
   })
 
-  _eventDisposers = [d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22]
+  // dev-browser.wait-for-selector — poll until selector exists, with timeout
+  const d23 = host.onEvent('hermes-dev-browser.wait-for-selector', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    const timeout = event?.payload?.timeout || 10000
+    const visible = event?.payload?.visible !== false
+    if (!selector) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const checkScript = visible
+      ? `(function(){var el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;var r=el.getBoundingClientRect();if(r.width===0||r.height===0)return null;return {tag:el.tagName,id:el.id||undefined,className:el.className||undefined,text:(el.textContent||'').substring(0,200),rect:{x:r.x,y:r.y,width:r.width,height:r.height}}})()`
+      : `(function(){var el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;return {tag:el.tagName,id:el.id||undefined,className:el.className||undefined,text:(el.textContent||'').substring(0,200)}})()`
+    const deadline = Date.now() + timeout
+    const pollSel = setInterval(() => {
+      wv.executeJavaScript(checkScript)
+        .then((result) => {
+          if (result) {
+            clearInterval(pollSel)
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { found: true, element: result } } }).catch(() => {})
+          } else if (Date.now() >= deadline) {
+            clearInterval(pollSel)
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { found: false } } }).catch(() => {})
+          }
+        })
+        .catch(() => {
+          if (Date.now() >= deadline) {
+            clearInterval(pollSel)
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { found: false } } }).catch(() => {})
+          }
+        })
+    }, 200)
+  })
+
+  // dev-browser.get-page-text — extract all visible text from the page
+  const d24 = host.onEvent('hermes-dev-browser.get-page-text', (event) => {
+    const requestId = event?.payload?.request_id
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    wv.executeJavaScript('document.body ? document.body.innerText : ""')
+      .then((text) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { text: text || '', length: (text || '').length } } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.get-dom-snapshot — return a simplified DOM tree as text
+  const d25 = host.onEvent('hermes-dev-browser.get-dom-snapshot', (event) => {
+    const requestId = event?.payload?.request_id
+    const maxDepth = event?.payload?.max_depth || 5
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const script = `(function(){
+      function snap(el, depth) {
+        if (depth > ${maxDepth}) return null;
+        var children = [];
+        for (var i = 0; i < el.children.length && i < 50; i++) {
+          var c = snap(el.children[i], depth + 1);
+          if (c) children.push(c);
+        }
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : {};
+        return {
+          tag: el.tagName,
+          id: el.id || undefined,
+          class: el.className && typeof el.className === 'string' ? el.className.substring(0, 100) : undefined,
+          text: (el.textContent || '').trim().substring(0, 80),
+          rect: r.width > 0 ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : undefined,
+          children: children.length ? children : undefined
+        };
+      }
+      return snap(document.body, 0);
+    })()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.fill-form — fill multiple form fields at once
+  const d26 = host.onEvent('hermes-dev-browser.fill-form', (event) => {
+    const requestId = event?.payload?.request_id
+    const fields = event?.payload?.fields || {}
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const fieldsJson = JSON.stringify(fields)
+    const script = `(function(){
+      var fields = ${fieldsJson};
+      var filled = 0, failed = 0;
+      for (var sel in fields) {
+        var el = document.querySelector(sel);
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
+          el.value = fields[sel];
+          el.dispatchEvent(new Event('input', {bubbles: true}));
+          el.dispatchEvent(new Event('change', {bubbles: true}));
+          filled++;
+        } else { failed++; }
+      }
+      return { filled: filled, failed: failed };
+    })()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.wait-for-navigation — wait for page load to complete
+  const d27 = host.onEvent('hermes-dev-browser.wait-for-navigation', (event) => {
+    const requestId = event?.payload?.request_id
+    const timeout = event?.payload?.timeout || 15000
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const deadline = Date.now() + timeout
+    const pollNav = setInterval(() => {
+      const t = $tabs.get()[$activeTabIndex.get()]
+      if (t && !t.loading) {
+        clearInterval(pollNav)
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { navigated: true, url: t.url, title: t.title } } }).catch(() => {})
+      } else if (Date.now() >= deadline) {
+        clearInterval(pollNav)
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { navigated: false, still_loading: true } } }).catch(() => {})
+      }
+    }, 200)
+  })
+
+  // dev-browser.hover — trigger CSS :hover on an element by selector
+  const d28 = host.onEvent('hermes-dev-browser.hover', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    if (!selector) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const script = `(function(){var el=document.querySelector(${JSON.stringify(selector)});if(!el)return {success:false,error:'not found'};el.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));el.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));el.dispatchEvent(new MouseEvent('mousemove',{bubbles:true}));return {success:true,tag:el.tagName}})()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.select-option — set value of a <select> element
+  const d29 = host.onEvent('hermes-dev-browser.select-option', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    const value = event?.payload?.value
+    if (!selector) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const script = `(function(){var el=document.querySelector(${JSON.stringify(selector)});if(!el)return {success:false,error:'not found'};if(el.tagName!=='SELECT')return {success:false,error:'not a select element'};el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true,value:el.value}})()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.press-key-combo — press multiple keys simultaneously
+  const d30 = host.onEvent('hermes-dev-browser.press-key-combo', (event) => {
+    const requestId = event?.payload?.request_id
+    const keys = event?.payload?.keys || []
+    if (!keys.length) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'keys required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const keysJson = JSON.stringify(keys)
+    const script = `(function(){
+      var keys = ${keysJson};
+      var el = document.activeElement || document.body;
+      var mods = { ctrl: keys.includes('ctrl') || keys.includes('Cmd'), shift: keys.includes('shift'), alt: keys.includes('alt'), meta: keys.includes('meta') || keys.includes('cmd') };
+      var mainKey = keys.find(function(k){ return !['ctrl','shift','alt','meta','cmd','Cmd'].includes(k) });
+      if (!mainKey) return { success: false, error: 'no non-modifier key' };
+      var opts = { key: mainKey, ctrlKey: mods.ctrl, shiftKey: mods.shift, altKey: mods.alt, metaKey: mods.meta, bubbles: true };
+      el.dispatchEvent(new KeyboardEvent('keydown', opts));
+      el.dispatchEvent(new KeyboardEvent('keypress', opts));
+      el.dispatchEvent(new KeyboardEvent('keyup', opts));
+      return { success: true, keys: keys };
+    })()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.upload-file — set files on an <input type="file">
+  const d31 = host.onEvent('hermes-dev-browser.upload-file', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    const filePath = event?.payload?.file_path
+    if (!selector || !filePath) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector and file_path required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    // Note: Electron webview doesn't allow setting file paths via JS for security.
+    // We can only dispatch the click to open the file dialog.
+    const script = `(function(){var el=document.querySelector(${JSON.stringify(selector)});if(!el)return {success:false,error:'not found'};if(el.tagName!=='INPUT'||el.type!=='file')return {success:false,error:'not a file input'};el.click();return {success:true,note:'file dialog opened — user must select file manually'}})()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.handle-dialog — accept or dismiss alert/confirm/prompt
+  const d32 = host.onEvent('hermes-dev-browser.handle-dialog', (event) => {
+    const requestId = event?.payload?.request_id
+    const action = event?.payload?.action || 'accept'
+    const promptText = event?.payload?.prompt_text || ''
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    // Override window.alert/confirm/prompt before they fire
+    const script = `(function(){
+      window.__hermesDialogResult = null;
+      var origAlert = window.alert, origConfirm = window.confirm, origPrompt = window.prompt;
+      window.alert = function(m) { window.__hermesDialogResult = { type: 'alert', message: m, action: '${action}' }; };
+      window.confirm = function(m) { window.__hermesDialogResult = { type: 'confirm', message: m, action: '${action}', result: '${action}' === 'accept' }; return '${action}' === 'accept'; };
+      window.prompt = function(m, d) { window.__hermesDialogResult = { type: 'prompt', message: m, action: '${action}', result: '${action}' === 'accept' ? ${JSON.stringify(promptText)} : null }; return '${action}' === 'accept' ? ${JSON.stringify(promptText)} : null; };
+      return { success: true, note: 'dialog handlers installed — next alert/confirm/prompt will be auto-handled' };
+    })()`
+    if (wv?.executeJavaScript) {
+      wv.executeJavaScript(script)
+        .then((result) => {
+          if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+        })
+        .catch((error) => {
+          if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+        })
+    } else {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+    }
+  })
+
+  // dev-browser.get-cookies — get cookies for the current page
+  const d33 = host.onEvent('hermes-dev-browser.get-cookies', (event) => {
+    const requestId = event?.payload?.request_id
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    wv.executeJavaScript('document.cookie')
+      .then((cookieStr) => {
+        const cookies = (cookieStr || '').split(';').filter(function (c) { return c.trim() }).map(function (c) {
+          var parts = c.trim().split('=')
+          return { name: parts[0], value: parts.slice(1).join('=') }
+        })
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { cookies, count: cookies.length } } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.get-local-storage — get all localStorage entries
+  const d34 = host.onEvent('hermes-dev-browser.get-local-storage', (event) => {
+    const requestId = event?.payload?.request_id
+    const key = event?.payload?.key || null
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const script = key
+      ? `(function(){return { key: ${JSON.stringify(key)}, value: localStorage.getItem(${JSON.stringify(key)}) }})()`
+      : `(function(){var items={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);items[k]=localStorage.getItem(k)}return { items: items, count: localStorage.length }})()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.get-computed-style — get computed style of an element
+  const d35 = host.onEvent('hermes-dev-browser.get-computed-style', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    const properties = event?.payload?.properties || null
+    if (!selector) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const propsJson = JSON.stringify(properties)
+    const script = `(function(){
+      var el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return { success: false, error: 'not found' };
+      var cs = window.getComputedStyle(el);
+      var props = ${propsJson};
+      if (props && Array.isArray(props)) {
+        var result = {};
+        props.forEach(function(p) { result[p] = cs.getPropertyValue(p); });
+        return { success: true, styles: result };
+      }
+      var common = ['display','visibility','opacity','color','backgroundColor','fontSize','fontWeight','margin','padding','border','width','height','position','zIndex','overflow'];
+      var result = {};
+      common.forEach(function(p) { result[p] = cs.getPropertyValue(p); });
+      return { success: true, styles: result };
+    })()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.intercept-network — wait for a specific network request pattern
+  const d36 = host.onEvent('hermes-dev-browser.intercept-network', (event) => {
+    const requestId = event?.payload?.request_id
+    const urlPattern = event?.payload?.url_pattern || ''
+    const method = (event?.payload?.method || '').toUpperCase()
+    const timeout = event?.payload?.timeout || 10000
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const entries = networkEntriesMap.get(tab.id) || []
+    const startLen = entries.length
+    const deadline = Date.now() + timeout
+    const pollNet = setInterval(() => {
+      const current = networkEntriesMap.get(tab.id) || []
+      for (let i = startLen; i < current.length; i++) {
+        const e = current[i]
+        if (urlPattern && !(e.url || '').includes(urlPattern)) continue
+        if (method && (e.method || '').toUpperCase() !== method) continue
+        clearInterval(pollNet)
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { found: true, entry: e } } }).catch(() => {})
+        return
+      }
+      if (Date.now() >= deadline) {
+        clearInterval(pollNet)
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { found: false } } }).catch(() => {})
+      }
+    }, 200)
+  })
+
+  // dev-browser.screenshot-element — screenshot a single element by selector
+  const d37 = host.onEvent('hermes-dev-browser.screenshot-element', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    if (!selector) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript || !wv?.capturePage) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    // Scroll element into view, then capture full page screenshot
+    wv.executeJavaScript(`(function(){var el=document.querySelector(${JSON.stringify(selector)});if(!el)return null;el.scrollIntoView({block:'center'});var r=el.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`)
+      .then((rect) => {
+        if (!rect) {
+          if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'element not found' } }).catch(() => {})
+          return
+        }
+        // Capture page and crop to element rect
+        Promise.resolve(wv.capturePage())
+          .then((image) => {
+            // Electron NativeImage crop
+            try {
+              const cropped = image.crop({ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) })
+              const dataUrl = cropped.toDataURL?.()
+              if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: dataUrl } }).catch(() => {})
+            } catch (e) {
+              // Fallback: return full screenshot
+              const dataUrl = image.toDataURL?.()
+              if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: dataUrl, note: 'crop failed, returned full screenshot' } }).catch(() => {})
+            }
+          })
+          .catch((error) => {
+            if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+          })
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.execute-script — inject and run a multi-line script
+  const d38 = host.onEvent('hermes-dev-browser.execute-script', (event) => {
+    const requestId = event?.payload?.request_id
+    const script = event?.payload?.script
+    if (!script) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'script required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    // Wrap in an async IIFE to support await
+    const wrapped = `(async function(){ ${script} })()`
+    wv.executeJavaScript(wrapped)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.pdf-export — print page to PDF
+  const d39 = host.onEvent('hermes-dev-browser.pdf-export', (event) => {
+    const requestId = event?.payload?.request_id
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    // Use browser's print dialog
+    wv.executeJavaScript('window.print()')
+      .then(() => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, note: 'print dialog opened' } } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  // dev-browser.bookmark-management — add/remove/list bookmarks
+  const d40 = host.onEvent('hermes-dev-browser.bookmark-management', (event) => {
+    const requestId = event?.payload?.request_id
+    const action = event?.payload?.action // 'add', 'remove', 'list'
+    const url = event?.payload?.url
+    const title = event?.payload?.title
+    if (!action) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'action required (add|remove|list)' } }).catch(() => {})
+      return
+    }
+    if (action === 'add') {
+      if (!url) { if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'url required' } }).catch(() => {}); return }
+      addBookmark(url, title)
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, action: 'add', url } } }).catch(() => {})
+    } else if (action === 'remove') {
+      if (!url) { if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'url required' } }).catch(() => {}); return }
+      removeBookmark(url)
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, action: 'remove', url } } }).catch(() => {})
+    } else if (action === 'list') {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { bookmarks: $bookmarks.get(), count: $bookmarks.get().length } } }).catch(() => {})
+    } else {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'invalid action' } }).catch(() => {})
+    }
+  })
+
+  // dev-browser.set-viewport — set a custom viewport size
+  const d41 = host.onEvent('hermes-dev-browser.set-viewport', (event) => {
+    const requestId = event?.payload?.request_id
+    const width = event?.payload?.width
+    const height = event?.payload?.height
+    if (!width || !height) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'width and height required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (wv) {
+      wv.style.width = width + 'px'
+      wv.style.height = height + 'px'
+    }
+    if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: { success: true, width, height } } }).catch(() => {})
+  })
+
+  // dev-browser.get-element-info — get detailed info about an element by selector
+  const d42 = host.onEvent('hermes-dev-browser.get-element-info', (event) => {
+    const requestId = event?.payload?.request_id
+    const selector = event?.payload?.selector
+    if (!selector) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'selector required' } }).catch(() => {})
+      return
+    }
+    const tabs = $tabs.get()
+    const idx = $activeTabIndex.get()
+    const tab = tabs[idx]
+    if (!tab) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'no active tab' } }).catch(() => {})
+      return
+    }
+    const wv = webviewRefs.get(tab.id)
+    if (!wv?.executeJavaScript) {
+      if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: 'webview not ready' } }).catch(() => {})
+      return
+    }
+    const script = `(function(){
+      var el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      var attrs = {};
+      for (var i = 0; i < el.attributes.length; i++) {
+        attrs[el.attributes[i].name] = el.attributes[i].value;
+      }
+      return {
+        tag: el.tagName,
+        id: el.id || undefined,
+        className: el.className || undefined,
+        type: el.type || undefined,
+        value: el.value || undefined,
+        href: el.href || undefined,
+        src: el.src || undefined,
+        text: (el.textContent || '').trim().substring(0, 500),
+        html: el.outerHTML.substring(0, 1000),
+        attrs: attrs,
+        rect: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
+        visible: r.width > 0 && r.height > 0,
+        disabled: el.disabled || false,
+        checked: el.checked || undefined
+      };
+    })()`
+    wv.executeJavaScript(script)
+      .then((result) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
+      })
+      .catch((error) => {
+        if (requestId) ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result: null, error: error instanceof Error ? error.message : String(error) } }).catch(() => {})
+      })
+  })
+
+  _eventDisposers = [d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26, d27, d28, d29, d30, d31, d32, d33, d34, d35, d36, d37, d38, d39, d40, d41, d42]
 }
 
 // ---------------------------------------------------------------------------
