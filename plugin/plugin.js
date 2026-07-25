@@ -3,7 +3,7 @@
 // from react/jsx-runtime. Only imports: @hermes/plugin-sdk, react, react/jsx-runtime.
 //
 // Features: multi-tab navigation, console panel, network inspector, device mode,
-// autorefresh with file watching, agent control via events, palette commands,
+// agent control via events, palette commands,
 // keybinds, and persistent storage.
 
 import {
@@ -52,7 +52,6 @@ const TABLET_UA =
 
 const DEFAULT_HOME_URL = 'https://www.google.com'
 
-const FILE_RELOAD_DEBOUNCE_MS = 200
 const MAX_HISTORY = 20
 const MAX_CONSOLE_ENTRIES = 500
 const MAX_NETWORK_ENTRIES = 300
@@ -152,8 +151,6 @@ const $networkHeight = atom(160)
 const $devtoolsOpen = atom({})
 // Device mode: 'desktop' | 'mobile' | 'tablet'
 const $deviceMode = atom('desktop')
-// Autorefresh on/off
-const $autorefreshOn = atom(false)
 // URL history (last 20 visited URLs)
 const $urlHistory = atom([])
 // Home URL (persisted)
@@ -169,6 +166,11 @@ const $networkVersion = atom(0)
 const $navState = atom({ back: false, forward: false })
 // Element picker active state
 const $pickerActive = atom(false)
+// Incognito mode — when ON, new tabs use an ephemeral (non-persisted) partition
+const $incognitoMode = atom(false)
+
+// Bookmarks — persisted list of { url, title }
+const $bookmarks = atom([])
 
 // Ref map: tab id -> webview element. Kept in module-level Maps so handlers
 // can access webviews imperatively without React closures.
@@ -214,6 +216,21 @@ function initStorage(ctx) {
 
   const deviceModeStored = _storage.get('deviceMode', 'desktop')
   $deviceMode.set(deviceModeStored)
+
+  // Restore persisted tabs (url, title, pinned) — not the id or runtime state
+  const savedTabs = _storage.get('savedTabs', [])
+  if (Array.isArray(savedTabs) && savedTabs.length > 0) {
+    const restored = savedTabs.map(function (st) {
+      return createTab(st.url, { pinned: !!st.pinned })
+    })
+    $tabs.set(restored)
+    const savedActive = _storage.get('activeTabIndex', 0)
+    $activeTabIndex.set(Math.min(savedActive, restored.length - 1))
+  }
+
+  // Restore bookmarks
+  const savedBookmarks = _storage.get('bookmarks', [])
+  if (Array.isArray(savedBookmarks)) $bookmarks.set(savedBookmarks)
 }
 
 function persistHistory() {
@@ -226,11 +243,70 @@ function persist(key, value) {
   _storage.set(key, value)
 }
 
+function persistTabs() {
+  if (!_storage) return
+  var tabs = $tabs.get()
+  var saved = tabs.map(function (t) {
+    return { url: t.url, title: t.title, pinned: !!t.pinned }
+  })
+  _storage.set('savedTabs', saved)
+  _storage.set('activeTabIndex', $activeTabIndex.get())
+}
+
+// ── Bookmarks ────────────────────────────────────────────────────────────
+
+function isBookmarked(url) {
+  return $bookmarks.get().some(function (b) { return b.url === url })
+}
+
+function addBookmark(url, title) {
+  if (!url || isBookmarked(url)) return
+  var bm = [...$bookmarks.get(), { url: url, title: title || compactUrl(url) }]
+  $bookmarks.set(bm)
+  persistBookmarks()
+}
+
+function removeBookmark(url) {
+  var bm = $bookmarks.get().filter(function (b) { return b.url !== url })
+  $bookmarks.set(bm)
+  persistBookmarks()
+}
+
+function toggleBookmark(url, title) {
+  if (isBookmarked(url)) {
+    removeBookmark(url)
+  } else {
+    addBookmark(url, title)
+  }
+}
+
+function persistBookmarks() {
+  if (!_storage) return
+  _storage.set('bookmarks', $bookmarks.get())
+}
+
+function togglePinTab(index) {
+  var tabs = $tabs.get()
+  var tab = tabs[index]
+  if (!tab) return
+  tab.pinned = !tab.pinned
+  // Move pinned tabs to the front, unpinned to the back
+  var pinned = tabs.filter(function (t) { return t.pinned })
+  var unpinned = tabs.filter(function (t) { return !t.pinned })
+  var reordered = pinned.concat(unpinned)
+  // Find the tab that was toggled in the new order
+  var newIdx = reordered.indexOf(tab)
+  $tabs.set(reordered)
+  $activeTabIndex.set(newIdx)
+  persistTabs()
+}
+
 // ---------------------------------------------------------------------------
 // Tab management
 // ---------------------------------------------------------------------------
 
-function createTab(url) {
+function createTab(url, opts) {
+  opts = opts || {}
   const id = nextId()
   const tab = {
     id,
@@ -238,6 +314,7 @@ function createTab(url) {
     title: compactUrl(url || $homeUrl.get()),
     loading: false,
     error: null,
+    pinned: !!opts.pinned,
   }
   consoleEntriesMap.set(id, [])
   networkEntriesMap.set(id, [])
@@ -253,6 +330,11 @@ function addTab(url) {
   $tabs.set(tabs)
   $activeTabIndex.set(tabs.length - 1)
   persist('activeTabIndex', tabs.length - 1)
+  // Stash the partition this tab should use so createWebviewForTab can pick it
+  // up when the TabContent component mounts. Incognito tabs get an ephemeral
+  // (non-persisted) partition; normal tabs keep the persisted one.
+  tab._partition = $incognitoMode.get() ? 'hermes-dev-browser-incognito' : 'persist:hermes-dev-browser'
+  persistTabs()
   // Update URL bar to the new tab's URL
   $urlBarValue.set(tab.url)
   // Reset nav state for the new tab
@@ -293,7 +375,7 @@ function closeTab(index) {
     newIndex = newIndex - 1
   }
   $activeTabIndex.set(newIndex)
-  persist('activeTabIndex', newIndex)
+  persistTabs()
 
   // Update URL bar to the new active tab
   const newActive = newTabs[newIndex]
@@ -321,6 +403,10 @@ function updateTab(id, updates) {
   const newTabs = [...tabs]
   newTabs[idx] = { ...newTabs[idx], ...updates }
   $tabs.set(newTabs)
+  // Persist when title or url changes (not on loading/error)
+  if (updates.title || updates.url) {
+    persistTabs()
+  }
 }
 
 function updateNavState(tabId) {
@@ -702,76 +788,24 @@ function formatElementRef(el) {
   return parts.join('\n')
 }
 
-let _watchId = null
-let _unsubFileChanged = null
-let _reloadTimer = null
-
-function startAutorefresh() {
-  if ($autorefreshOn.get()) return
-
-  const cwd = host.state.cwd?.get?.() || '.'
-  const hermesDesktop = window.hermesDesktop
-
-  if (!hermesDesktop?.watchPreviewFile || !hermesDesktop?.onPreviewFileChanged) {
-    host.notify({
-      kind: 'warning',
-      message: 'File watching is not available in this environment.',
-    })
-    return
-  }
-
-  _unsubFileChanged = hermesDesktop.onPreviewFileChanged((payload) => {
-    if (_watchId && payload.id !== _watchId) return
-
-    if (_reloadTimer) clearTimeout(_reloadTimer)
-    _reloadTimer = setTimeout(() => {
-      _reloadTimer = null
-      reloadActiveTab()
-    }, FILE_RELOAD_DEBOUNCE_MS)
-  })
-
-  hermesDesktop
-    .watchPreviewFile(cwd)
-    .then((watch) => {
-      _watchId = watch.id
-      $autorefreshOn.set(true)
-    })
-    .catch((error) => {
-      host.notifyError(error, 'Failed to start file watching')
-      _unsubFileChanged?.()
-      _unsubFileChanged = null
-    })
-}
-
-function stopAutorefresh() {
-  if (_reloadTimer) {
-    clearTimeout(_reloadTimer)
-    _reloadTimer = null
-  }
-  if (_watchId) {
-    try {
-      window.hermesDesktop?.stopPreviewFileWatch?.(_watchId)
-    } catch {}
-    _watchId = null
-  }
-  _unsubFileChanged?.()
-  _unsubFileChanged = null
-  $autorefreshOn.set(false)
-}
-
 // ---------------------------------------------------------------------------
 // Webview creation and event wiring
 // ---------------------------------------------------------------------------
 
-function createWebviewForTab(tabId, url, hostDiv) {
+function createWebviewForTab(tabId, url, hostDiv, partition) {
   const webview = document.createElement('webview')
 
-  // Critical attributes
+  // Critical attributes.
+  // partition MUST be set before the webview is attached to the DOM — Electron
+  // only honors the attribute at attach time, and changing it afterwards has no
+  // effect. Default to the persisted partition so cookies/sessions survive
+  // Hermes restarts; callers may pass an ephemeral partition for incognito.
   webview.setAttribute('allowpopups', '')
-  webview.setAttribute('partition', 'persist:hermes-dev-browser')
+  webview.setAttribute('partition', partition || 'persist:hermes-dev-browser')
+  // allowRunningInsecureContent is needed for localhost / HTTP sites (e.g. Dran)
   webview.setAttribute(
     'webpreferences',
-    'contextIsolation=yes,nodeIntegration=no,sandbox=yes'
+    'contextIsolation=yes,nodeIntegration=no,sandbox=yes,allowRunningInsecureContent=true'
   )
   // Set user agent via attribute — works BEFORE dom-ready (method call doesn't)
   webview.setAttribute('useragent', CHROME_UA)
@@ -903,9 +937,20 @@ function createWebviewForTab(tabId, url, hostDiv) {
     })
   }
 
+  // Right-click toggles the element picker
+  const onContextMenu = (e) => {
+    e.preventDefault()
+    if ($pickerActive.get()) {
+      stopElementPicker()
+    } else {
+      startElementPicker()
+    }
+  }
+
   webview.addEventListener('crashed', onCrashed)
   webview.addEventListener('unresponsive', onUnresponsive)
   webview.addEventListener('responsive', onResponsive)
+  webview.addEventListener('context-menu', onContextMenu)
 
   // Attach to DOM
   hostDiv.appendChild(webview)
@@ -928,6 +973,7 @@ function createWebviewForTab(tabId, url, hostDiv) {
     webview.removeEventListener('crashed', onCrashed)
     webview.removeEventListener('unresponsive', onUnresponsive)
     webview.removeEventListener('responsive', onResponsive)
+    webview.removeEventListener('context-menu', onContextMenu)
   }
 
   return webview
@@ -950,6 +996,38 @@ function setupAgentEvents(ctx) {
     } else {
       navigateActiveTab(url)
     }
+  })
+
+  // Window event listener — lets other plugins emit preview.open via
+  // window.dispatchEvent(new CustomEvent('hermes:dev-browser:navigate', { detail: { url } }))
+  function onWindowNavigate(e) {
+    const url = e?.detail?.url || e?.detail?.payload?.url
+    if (!url) return
+    const tabs = $tabs.get()
+    if (tabs.length === 0) {
+      addTab(url)
+    } else {
+      navigateActiveTab(url)
+    }
+  }
+  window.addEventListener('hermes:dev-browser:navigate', onWindowNavigate)
+  window.addEventListener('hermes:preview.open', onWindowNavigate)
+  _eventDisposers.push(() => {
+    window.removeEventListener('hermes:dev-browser:navigate', onWindowNavigate)
+    window.removeEventListener('hermes:preview.open', onWindowNavigate)
+  })
+
+  // Window event listener — lets other plugins (e.g. hermes-dran) open a URL in
+  // a NEW tab rather than navigating the active one.
+  // Usage: window.dispatchEvent(new CustomEvent('hermes:dev-browser:new-tab', { detail: { url } }))
+  function onWindowNewTab(e) {
+    const url = e?.detail?.url || e?.detail?.payload?.url
+    if (!url) return
+    addTab(url)
+  }
+  window.addEventListener('hermes:dev-browser:new-tab', onWindowNewTab)
+  _eventDisposers.push(() => {
+    window.removeEventListener('hermes:dev-browser:new-tab', onWindowNewTab)
   })
 
   // dev-browser.navigate
@@ -1796,27 +1874,61 @@ function TabBar() {
             role: 'tab',
             tabIndex: 0,
             className: cn(
-              'group/tab flex items-center gap-1 rounded-md px-2 py-1 text-xs cursor-pointer whitespace-nowrap transition-colors',
-              isActive
-                ? 'bg-accent/20 text-[var(--ui-text-primary)]'
-                : 'text-[var(--ui-text-tertiary)] hover:bg-accent/10 hover:text-[var(--ui-text-secondary)]'
+              'group/tab flex items-center rounded-md py-1 text-xs cursor-pointer whitespace-nowrap transition-colors',
+              tab.pinned ? 'px-0 gap-0 justify-center w-8 relative' : 'px-2 gap-1',
+              tab.pinned
+                ? 'border-b-2'
+                : 'border-b-2 border-transparent'
             ),
+            style: isActive
+              ? { backgroundColor: 'rgb(59, 130, 246)', color: '#fff', borderBottomColor: 'rgb(59, 130, 246)' }
+              : tab.pinned
+                ? { color: 'rgb(150, 150, 150)', borderBottomColor: 'rgb(59, 130, 246)' }
+                : { color: 'rgb(150, 150, 150)', borderBottomColor: 'transparent' },
+            onMouseEnter: (e) => {
+              if (!isActive) {
+                e.currentTarget.style.backgroundColor = 'rgb(60, 60, 60)'
+                e.currentTarget.style.color = '#fff'
+              }
+            },
+            onMouseLeave: (e) => {
+              if (!isActive) {
+                e.currentTarget.style.backgroundColor = ''
+                e.currentTarget.style.color = 'rgb(150, 150, 150)'
+              }
+            },
             onClick: () => {
               haptic('tap')
               setActiveTab(index)
             },
+            onContextMenu: (e) => {
+              e.preventDefault()
+              haptic('tap')
+              togglePinTab(index)
+            },
+            title: tab.pinned ? t('unpinTab') : t('pinTab'),
             children: [
+              // Favicon (with Globe fallback). Spinner overrides while loading.
               tab.loading
                 ? jsx(GlyphSpinner, { className: 'size-3 shrink-0' })
+                : (function () {
+                    var favUrl
+                    try { favUrl = new URL(tab.url).origin + '/favicon.ico' } catch { favUrl = null }
+                    return favUrl
+                      ? jsx('img', { src: favUrl, className: 'size-3 shrink-0 rounded-sm', onError: function (e) { e.target.style.display = 'none'; var sib = e.target.nextElementSibling; if (sib) sib.style.display = '' } })
+                      : null
+                  })(),
+              // Globe fallback (hidden if favicon loads)
+              !tab.loading
+                ? jsx(icons.Globe, { className: 'size-3 shrink-0 text-[var(--ui-text-tertiary)]', style: { display: 'none' } })
                 : null,
-              jsx('span', {
-                className: cn(
-                  'max-w-[120px] truncate',
-                  !tab.loading && 'pl-0'
-                ),
+              // Title + close button only for unpinned tabs
+              !tab.pinned ? jsx('span', {
+                className: 'max-w-[120px] truncate',
                 children: tab.title || compactUrl(tab.url),
-              }),
-              jsx('button', {
+              }) : null,
+              // Close button (only for unpinned tabs)
+              !tab.pinned ? jsx('button', {
                     type: 'button',
                     className:
                       'ml-1 inline-flex h-4 w-4 items-center justify-center rounded-sm text-[var(--ui-text-tertiary)] hover:bg-[var(--ui-stroke-secondary)] hover:text-[var(--ui-text-primary)] transition-colors',
@@ -1828,7 +1940,21 @@ function TabBar() {
                     title: t('closeTab'),
                     'aria-label': t('closeTab'),
                     children: jsx(icons.X, { className: 'size-3' }),
-                  })
+                  }) : null,
+              // Unpin button for pinned tabs (visible on hover, absolute so it doesn't shift the favicon)
+              tab.pinned ? jsx('button', {
+                    type: 'button',
+                    className:
+                      'absolute top-0 right-0 inline-flex h-4 w-4 items-center justify-center rounded-sm text-[var(--ui-text-tertiary)] hover:bg-[var(--ui-stroke-secondary)] hover:text-[var(--ui-text-primary)] transition-opacity opacity-0 group-hover/tab:opacity-100',
+                    onClick: (e) => {
+                      e.stopPropagation()
+                      haptic('tap')
+                      togglePinTab(index)
+                    },
+                    title: t('unpinTab'),
+                    'aria-label': t('unpinTab'),
+                    children: jsx(icons.X, { className: 'size-3' }),
+                  }) : null,
             ],
           },
           `tab-${tab.id}`
@@ -1844,6 +1970,80 @@ function TabBar() {
   })
 }
 
+/** Bookmarks modal — centered overlay with the list of saved bookmarks. */
+function BookmarksMenu({ bookmarks, t }) {
+  const [open, setOpen] = useState(false)
+
+  return jsxs('div', {
+    className: 'relative',
+    children: [
+      jsx(IconButton, {
+        icon: 'Bookmark',
+        label: t('bookmarks'),
+        onClick: () => setOpen(!open),
+        active: open,
+      }),
+      open ? jsxs('div', {
+        className: 'fixed inset-0 z-[200]',
+        onClick: () => setOpen(false),
+        children: [
+          jsxs('div', {
+            className: 'absolute top-full right-0 mt-1 w-80 max-h-[60vh] rounded-lg border border-[var(--ui-stroke-secondary)] shadow-2xl z-10 flex flex-col overflow-hidden',
+            style: { backgroundColor: 'var(--ui-bg-elevated, #1a1a1a)' },
+            onClick: (e) => e.stopPropagation(),
+            children: [
+              // Header
+              jsxs('div', {
+                className: 'flex items-center justify-between px-4 py-3 border-b border-[var(--ui-stroke-secondary)]',
+                children: [
+                  jsx('span', { className: 'text-sm font-medium text-[var(--ui-text-primary)]', children: t('bookmarks') }),
+                  jsx('button', {
+                    type: 'button',
+                    className: 'text-[var(--ui-text-tertiary)] hover:text-[var(--ui-text-primary)] transition-colors',
+                    onClick: () => setOpen(false),
+                    children: jsx(icons.X, { className: 'size-4' }),
+                  }),
+                ],
+              }),
+              // List
+              jsx('div', {
+                className: 'flex-1 overflow-y-auto',
+                children: bookmarks.length === 0
+                  ? jsx('div', { className: 'px-3 py-8 text-xs text-[var(--ui-text-quaternary)] text-center', children: t('noBookmarks') })
+                  : bookmarks.map(function (bm) {
+                      var favUrl
+                      try { favUrl = new URL(bm.url).origin + '/favicon.ico' } catch { favUrl = null }
+                      return jsxs('div', {
+                        className: 'group/bm flex items-center gap-2 px-4 py-2.5 hover:bg-[var(--ui-stroke-secondary)] cursor-pointer text-xs',
+                        onClick: () => {
+                          addTab(bm.url)
+                          setOpen(false)
+                        },
+                        children: [
+                          favUrl
+                            ? jsx('img', { src: favUrl, className: 'size-3.5 shrink-0 rounded-sm', onError: function (e) { e.target.style.display = 'none' } })
+                            : jsx(icons.Globe, { className: 'size-3.5 shrink-0 text-[var(--ui-text-tertiary)]' }),
+                          jsx('span', { className: 'flex-1 truncate text-[var(--ui-text-secondary)]', children: bm.title || compactUrl(bm.url) }),
+                          jsx('button', {
+                            className: 'opacity-0 group-hover/bm:opacity-100 text-[var(--ui-text-quaternary)] hover:text-[var(--ui-text-primary)] transition-opacity',
+                            onClick: (e) => {
+                              e.stopPropagation()
+                              removeBookmark(bm.url)
+                            },
+                            children: jsx(icons.X, { className: 'size-3.5' }),
+                          }),
+                        ]
+                      }, bm.url)
+                    }),
+              }),
+            ],
+          }),
+        ],
+      }) : null,
+    ],
+  })
+}
+
 /** Navigation toolbar: back, forward, reload, home, URL bar, devtools, etc. */
 function NavToolbar({ urlInputRef }) {
   const t = usePluginI18n(PLUGIN_ID)
@@ -1852,13 +2052,14 @@ function NavToolbar({ urlInputRef }) {
   const devtoolsMap = useValue($devtoolsOpen)
   const consoleOpen = useValue($consoleOpen)
   const networkOpen = useValue($networkOpen)
-  const autorefresh = useValue($autorefreshOn)
   const deviceMode = useValue($deviceMode)
   const pickerActive = useValue($pickerActive)
+  const incognitoMode = useValue($incognitoMode)
   const urlBarValue = useValue($urlBarValue)
   const history = useValue($urlHistory)
   const focusSignal = useValue($urlBarFocusSignal)
   const navState = useValue($navState)
+  const bookmarks = useValue($bookmarks)
 
   const [inputValue, setInputValue] = useState(urlBarValue)
   const activeTab = tabs[activeIndex]
@@ -1918,10 +2119,15 @@ function NavToolbar({ urlInputRef }) {
         label: t('reload'),
         onClick: () => reloadActiveTab(),
       }),
+      // Bookmark toggle — filled accent when current URL is bookmarked
       jsx(IconButton, {
-        icon: 'Globe',
-        label: t('home'),
-        onClick: () => navigateActiveTab($homeUrl.get()),
+        icon: isBookmarked(urlBarValue) ? 'BookmarkFilled' : 'Bookmark',
+        label: t('bookmark'),
+        active: isBookmarked(urlBarValue),
+        onClick: () => {
+          haptic('tap')
+          toggleBookmark(urlBarValue, activeTab ? activeTab.title : undefined)
+        },
       }),
       // URL bar
       jsx('form', {
@@ -1946,38 +2152,59 @@ function NavToolbar({ urlInputRef }) {
                     'absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none',
                   children: jsx(GlyphSpinner, { className: 'size-3.5' }),
                 })
-              : jsx('div', {
-                  className:
-                    'absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none',
-                  children: jsx(icons.Globe, {
-                    className: 'size-3.5 text-[var(--ui-text-tertiary)]',
-                  }),
-                }),
+              : (function () {
+                  var favUrl
+                  try { favUrl = new URL(urlBarValue).origin + '/favicon.ico' } catch { favUrl = null }
+                  return favUrl
+                    ? jsx('div', {
+                        className: 'absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none',
+                        children: jsx('img', { src: favUrl, className: 'size-3.5 rounded-sm', onError: function (e) { e.target.style.display = 'none' } }),
+                      })
+                    : jsx('div', {
+                        className:
+                          'absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none',
+                        children: jsx(icons.Globe, {
+                          className: 'size-3.5 text-[var(--ui-text-tertiary)]',
+                        }),
+                      })
+                })(),
           ],
         }),
+      }),
+      // Bookmarks dropdown — shows saved bookmarks, click to open in new tab
+      jsx(BookmarksMenu, { bookmarks: bookmarks, t: t }),
+      // Incognito toggle — when ON, new tabs use an ephemeral partition
+      jsx(IconButton, {
+        icon: incognitoMode ? 'EyeOff' : 'Eye',
+        label: t('incognito'),
+        active: incognitoMode,
+        onClick: () => {
+          const next = !$incognitoMode.get()
+          $incognitoMode.set(next)
+        },
+      }),
+      jsx(Separator, {
+        orientation: 'vertical',
+        className: 'h-5 mx-0.5',
+      }),
+      // Element picker — click to inspect, result goes to chat composer
+      jsx(IconButton, {
+        icon: 'ZoomIn',
+        label: 'Pick element',
+        active: pickerActive,
+        onClick: () => {
+          if (pickerActive) {
+            stopElementPicker()
+          } else {
+            startElementPicker()
+          }
+        },
       }),
       // Device mode dropdown
       jsx(DeviceModeDropdown, {
         mode: deviceMode,
         onChange: handleDeviceModeChange,
         t,
-      }),
-      jsx(Separator, {
-        orientation: 'vertical',
-        className: 'h-5 mx-0.5',
-      }),
-      // Autorefresh toggle
-      jsx(IconButton, {
-        icon: 'RefreshCw',
-        label: t('autorefresh'),
-        active: autorefresh,
-        onClick: () => {
-          if (autorefresh) {
-            stopAutorefresh()
-          } else {
-            startAutorefresh()
-          }
-        },
       }),
       // Console toggle
       jsx(IconButton, {
@@ -2007,23 +2234,6 @@ function NavToolbar({ urlInputRef }) {
         label: t('devtools'),
         active: devtoolsOpen,
         onClick: () => activeTab && toggleDevTools(activeTab.id),
-      }),
-      jsx(Separator, {
-        orientation: 'vertical',
-        className: 'h-5 mx-0.5',
-      }),
-      // Element picker — click to inspect, result goes to chat composer
-      jsx(IconButton, {
-        icon: 'Eye',
-        label: 'Pick element',
-        active: pickerActive,
-        onClick: () => {
-          if (pickerActive) {
-            stopElementPicker()
-          } else {
-            startElementPicker()
-          }
-        },
       }),
     ],
   })
@@ -2391,7 +2601,7 @@ function WebviewHost({ tab }) {
     hostRefs.set(tab.id, hostDiv)
 
     // Create and attach the webview
-    const webview = createWebviewForTab(tab.id, tab.url, hostDiv)
+    const webview = createWebviewForTab(tab.id, tab.url, hostDiv, tab._partition)
     webviewRefs.set(tab.id, webview)
 
     // Set device mode UA if not desktop (via attribute, safe pre-dom-ready)
@@ -2631,14 +2841,19 @@ export default {
         newTab: 'New Tab',
         closeTab: 'Close Tab',
         console: 'Console',
+        pinTab: 'Right-click to pin',
+        unpinTab: 'Click X to unpin',
+        bookmark: 'Bookmark this page',
+        bookmarks: 'Bookmarks',
+        noBookmarks: 'No bookmarks yet',
         clearHistory: 'Clear History',
-        autorefresh: 'Toggle Auto-refresh',
         deviceMode: 'Device Mode',
         network: 'Network',
         loading: 'Loading...',
         error: 'Failed to load',
         retry: 'Retry',
         noHistory: 'No history yet',
+        incognito: 'Incognito',
       },
       es: {
         title: 'Dev Browser',
@@ -2651,14 +2866,19 @@ export default {
         newTab: 'Nueva pestaña',
         closeTab: 'Cerrar pestaña',
         console: 'Consola',
+        pinTab: 'Click derecho para fijar',
+        unpinTab: 'Click la X para soltar',
+        bookmark: 'Guardar esta página',
+        bookmarks: 'Marcadores',
+        noBookmarks: 'Sin marcadores aún',
         clearHistory: 'Limpiar historial',
-        autorefresh: 'Auto-recarga',
         deviceMode: 'Modo dispositivo',
         network: 'Red',
         loading: 'Cargando...',
         error: 'Error al cargar',
         retry: 'Reintentar',
         noHistory: 'Sin historial',
+        incognito: 'Incógnito',
       },
     })
 

@@ -9,6 +9,8 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 ### Features
 
 - **🌐 Full navigation** — URL bar, back/forward/reload/home, multi-tab support
+- **📌 Pinned tabs** — Right-click any tab to pin/unpin; pinned tabs show only the favicon (centered) and sort to the left, with an unpin button on hover
+- **🔖 Bookmarks** — Save and manage bookmarks with quick access dropdown
 - **🔐 OAuth & Google login** — User-agent spoofing bypasses Google's Electron webview block; `allowpopups` enables OAuth flows
 - **🍪 Persistent sessions** — Cookies, localStorage, and IndexedDB survive app restarts via `persist:hermes-dev-browser` partition
 - **🐛 DevTools** — Toggle Chromium DevTools with one click
