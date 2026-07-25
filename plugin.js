@@ -1983,60 +1983,59 @@ function BookmarksMenu({ bookmarks, t }) {
         onClick: () => setOpen(!open),
         active: open,
       }),
-      open ? jsxs('div', {
+      // Backdrop — captures outside clicks, doesn't wrap the dropdown
+      open ? jsx('div', {
         className: 'fixed inset-0 z-[200]',
         onClick: () => setOpen(false),
+      }) : null,
+      // Dropdown — positioned relative to the button container, below it
+      open ? jsxs('div', {
+        className: 'absolute top-full right-0 mt-1 w-80 max-h-[60vh] rounded-lg border border-[var(--ui-stroke-secondary)] shadow-2xl z-[201] flex flex-col overflow-hidden',
+        style: { backgroundColor: 'var(--ui-bg-elevated, #1a1a1a)' },
         children: [
+          // Header
           jsxs('div', {
-            className: 'absolute top-full right-0 mt-1 w-80 max-h-[60vh] rounded-lg border border-[var(--ui-stroke-secondary)] shadow-2xl z-10 flex flex-col overflow-hidden',
-            style: { backgroundColor: 'var(--ui-bg-elevated, #1a1a1a)' },
-            onClick: (e) => e.stopPropagation(),
+            className: 'flex items-center justify-between px-4 py-3 border-b border-[var(--ui-stroke-secondary)]',
             children: [
-              // Header
-              jsxs('div', {
-                className: 'flex items-center justify-between px-4 py-3 border-b border-[var(--ui-stroke-secondary)]',
-                children: [
-                  jsx('span', { className: 'text-sm font-medium text-[var(--ui-text-primary)]', children: t('bookmarks') }),
-                  jsx('button', {
-                    type: 'button',
-                    className: 'text-[var(--ui-text-tertiary)] hover:text-[var(--ui-text-primary)] transition-colors',
-                    onClick: () => setOpen(false),
-                    children: jsx(icons.X, { className: 'size-4' }),
-                  }),
-                ],
-              }),
-              // List
-              jsx('div', {
-                className: 'flex-1 overflow-y-auto',
-                children: bookmarks.length === 0
-                  ? jsx('div', { className: 'px-3 py-8 text-xs text-[var(--ui-text-quaternary)] text-center', children: t('noBookmarks') })
-                  : bookmarks.map(function (bm) {
-                      var favUrl
-                      try { favUrl = new URL(bm.url).origin + '/favicon.ico' } catch { favUrl = null }
-                      return jsxs('div', {
-                        className: 'group/bm flex items-center gap-2 px-4 py-2.5 hover:bg-[var(--ui-stroke-secondary)] cursor-pointer text-xs',
-                        onClick: () => {
-                          addTab(bm.url)
-                          setOpen(false)
-                        },
-                        children: [
-                          favUrl
-                            ? jsx('img', { src: favUrl, className: 'size-3.5 shrink-0 rounded-sm', onError: function (e) { e.target.style.display = 'none' } })
-                            : jsx(icons.Globe, { className: 'size-3.5 shrink-0 text-[var(--ui-text-tertiary)]' }),
-                          jsx('span', { className: 'flex-1 truncate text-[var(--ui-text-secondary)]', children: bm.title || compactUrl(bm.url) }),
-                          jsx('button', {
-                            className: 'opacity-0 group-hover/bm:opacity-100 text-[var(--ui-text-quaternary)] hover:text-[var(--ui-text-primary)] transition-opacity',
-                            onClick: (e) => {
-                              e.stopPropagation()
-                              removeBookmark(bm.url)
-                            },
-                            children: jsx(icons.X, { className: 'size-3.5' }),
-                          }),
-                        ]
-                      }, bm.url)
-                    }),
+              jsx('span', { className: 'text-sm font-medium text-[var(--ui-text-primary)]', children: t('bookmarks') }),
+              jsx('button', {
+                type: 'button',
+                className: 'text-[var(--ui-text-tertiary)] hover:text-[var(--ui-text-primary)] transition-colors',
+                onClick: () => setOpen(false),
+                children: jsx(icons.X, { className: 'size-4' }),
               }),
             ],
+          }),
+          // List
+          jsx('div', {
+            className: 'flex-1 overflow-y-auto',
+            children: bookmarks.length === 0
+              ? jsx('div', { className: 'px-3 py-8 text-xs text-[var(--ui-text-quaternary)] text-center', children: t('noBookmarks') })
+              : bookmarks.map(function (bm) {
+                  var favUrl
+                  try { favUrl = new URL(bm.url).origin + '/favicon.ico' } catch { favUrl = null }
+                  return jsxs('div', {
+                    className: 'group/bm flex items-center gap-2 px-4 py-2.5 hover:bg-[var(--ui-stroke-secondary)] cursor-pointer text-xs',
+                    onClick: () => {
+                      addTab(bm.url)
+                      setOpen(false)
+                    },
+                    children: [
+                      favUrl
+                        ? jsx('img', { src: favUrl, className: 'size-3.5 shrink-0 rounded-sm', onError: function (e) { e.target.style.display = 'none' } })
+                        : jsx(icons.Globe, { className: 'size-3.5 shrink-0 text-[var(--ui-text-tertiary)]' }),
+                      jsx('span', { className: 'flex-1 truncate text-[var(--ui-text-secondary)]', children: bm.title || compactUrl(bm.url) }),
+                      jsx('button', {
+                        className: 'opacity-0 group-hover/bm:opacity-100 text-[var(--ui-text-quaternary)] hover:text-[var(--ui-text-primary)] transition-opacity',
+                        onClick: (e) => {
+                          e.stopPropagation()
+                          removeBookmark(bm.url)
+                        },
+                        children: jsx(icons.X, { className: 'size-3.5' }),
+                      }),
+                    ]
+                  }, bm.url)
+                }),
           }),
         ],
       }) : null,
