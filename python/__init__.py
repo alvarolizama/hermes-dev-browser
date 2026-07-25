@@ -4,13 +4,14 @@ Tools are registered into the ``terminal`` toolset so they're available
 wherever the desktop app runs. Each tool is gated on HERMES_DESKTOP
 via check_fn — they only appear when the desktop GUI is active.
 
-The tool implementations live in ``tools.py`` (copied from the plugin
-repo at ~/.hermes/desktop-plugins/hermes-dev-browser/tools/dev_browser_tool.py).
+Tool implementations live in ``tools.py``. Imports use relative paths
+(``from .tools import ...``) so the module loads correctly under the
+``hermes_plugins.<slug>`` namespace that Hermes' plugin loader creates.
 """
 
 from __future__ import annotations
 
-from plugins.hermes_dev_browser.tools import (
+from .tools import (
     # Original 21 tools
     dev_browser_navigate,
     dev_browser_eval,

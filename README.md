@@ -19,7 +19,6 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 - **📟 Console panel** — Captures `console.log/warn/error` from the webview, collapsible with drag-resize
 - **📡 Network inspector** — Basic request tracking with status code colors
 - **📱 Device mode** — Switch between desktop, mobile (375px), and tablet (768px) viewports
-- **🔄 Auto-refresh** — File watching with debounced reload on changes
 - **🔍 Element picker** — Click the ZoomIn icon or right-click anywhere on the page to toggle the element picker; captures CSS selector, HTML, attributes, and text — automatically inserted into the chat composer as a reference for the agent
 - **🖱️ Mouse & keyboard simulation** — Move cursor, click, type, press keys, scroll, and drag — using native Electron `sendInputEvent` with JS fallback. Enables agent-driven automated testing.
 - **🤖 Agent-controlled** — 41 tools the AI agent can call to navigate, inspect DOM, fill forms, wait for elements, intercept network requests, take screenshots, manage tabs, simulate input, and more
@@ -34,15 +33,17 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 ```bash
 mkdir -p ~/.hermes/desktop-plugins/hermes-dev-browser
 curl -o ~/.hermes/desktop-plugins/hermes-dev-browser/plugin.js \
-  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/plugin.js
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/plugin/plugin.js
 ```
 
 ### 2. Install the Python plugin (agent tools)
 
+The Python plugin registers all 41 agent tools via `ctx.register_tool()`. It uses **relative imports** (`from .tools import ...`) so it loads correctly under Hermes' `hermes_plugins.<slug>` namespace — no need to edit `toolsets.py` or any hermes-agent core files.
+
 ```bash
 mkdir -p ~/.hermes/plugins/hermes-dev-browser/dashboard
 
-# Python plugin (tool registration via ctx.register_tool — survives Hermes updates)
+# Python plugin (tool registration + tool implementations)
 curl -o ~/.hermes/plugins/hermes-dev-browser/__init__.py \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/__init__.py
 curl -o ~/.hermes/plugins/hermes-dev-browser/tools.py \
@@ -220,9 +221,9 @@ dev_browser_pdf_export()
 dev_browser_set_viewport(width=1024, height=768)
 ```
 
-## Agent Tools
+## Agent Tools (41 total)
 
-### Navigation & Inspection (original)
+### Navigation & Inspection (5)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -232,7 +233,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_get_url` | 🔗 | Get current URL and title |
 | `dev_browser_pick_element` | 🎯 | Start element picker, capture element ref |
 
-### Tab Management
+### Tab Management (4)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -241,7 +242,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_close_tab` | ❌ | Close a tab by index |
 | `dev_browser_switch_tab` | 🔄 | Switch active tab by index |
 
-### Console & Network
+### Console & Network (3)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -249,7 +250,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_clear_console` | 🧹 | Clear console entries |
 | `dev_browser_get_network` | 📡 | Get network request entries |
 
-### Device & Storage
+### Device & Storage (3)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -257,7 +258,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_clear_cache` | 🗑️ | Clear cache and reload |
 | `dev_browser_clear_cookies` | 🍪 | Clear cookies and storage |
 
-### Mouse & Keyboard Simulation (original)
+### Mouse & Keyboard Simulation (6)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -268,7 +269,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_scroll` | 📜 | Scroll at (x, y) up/down |
 | `dev_browser_drag` | ✋ | Drag from (x1,y1) to (x2,y2) |
 
-### DOM Inspection & Automation (new)
+### DOM Inspection & Automation (9)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -282,7 +283,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_press_key_combo` | ⌨️ | Press key combos (Ctrl+Enter, Shift+Tab) |
 | `dev_browser_get_element_info` | 🔍 | Detailed element info by selector |
 
-### Data & Debugging (new)
+### Data & Debugging (9)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -296,7 +297,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_upload_file` | 📎 | Trigger file input dialog |
 | `dev_browser_pdf_export` | 📄 | Trigger print dialog |
 
-### Utilities (new)
+### Utilities (2)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -352,13 +353,13 @@ Tools are registered via the Hermes plugin system, not by editing core files:
 1. **`__init__.py`** has a `register(ctx)` function called by the plugin loader
 2. It calls `ctx.register_tool()` for each of the 41 tools, registering them in the `terminal` toolset
 3. All tools are gated on `HERMES_DESKTOP` via `check_fn` — they only appear when the desktop app is running
-4. No need to edit `toolsets.py` or `hermes-agent/tools/` — the plugin handles everything
+4. **Relative imports** (`from .tools import ...`) ensure the plugin loads correctly under the `hermes_plugins.<slug>` namespace that Hermes' plugin loader creates — no need to edit `toolsets.py` or `hermes-agent/tools/`
 
 ## How it works
 
-- **Plugin JS** (`plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, bookmarks, incognito mode, console, network, element picker, and input simulation. Listens for 42 events from the agent via `host.onEvent`.
+- **Plugin JS** (`plugin/plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, bookmarks, incognito mode, console, network, element picker, and input simulation. Listens for events from the agent via `host.onEvent`.
 
-- **Python Plugin** (`~/.hermes/plugins/hermes-dev-browser/`) — Registers 41 agent tools via `ctx.register_tool()`. Each tool emits an event to the plugin JS via `desktop_ui.emit()`, then polls the REST mailbox (or uses in-process import) for results.
+- **Python Plugin** (`python/__init__.py` + `python/tools.py`) — Registers 41 agent tools via `ctx.register_tool()`. Each tool emits an event to the plugin JS via `desktop_ui.emit()`, then polls the REST mailbox (or uses in-process import) for results.
 
 - **Backend** (`backend/plugin_api.py`) — A FastAPI router mounted at `/api/plugins/hermes-dev-browser/`. Acts as a thread-safe in-memory result mailbox: the plugin JS POSTs results here after executing agent commands (eval, screenshot, click), and the Python tools poll for them.
 

@@ -1,13 +1,13 @@
 ---
 name: hermes-dev-browser
-description: "Control the Dev Browser pane in Hermes Desktop — navigate, inspect, pick elements, manage tabs, read console, simulate mouse/keyboard, and more."
-version: 1.1.0
+description: "Control the Dev Browser pane in Hermes Desktop — 41 tools for navigation, DOM inspection, form automation, mouse/keyboard simulation, network interception, screenshots, tab management, and more."
+version: 2.0.0
 license: MIT
 ---
 
 # Hermes Dev Browser — Agent Skill
 
-Control the Dev Browser webview pane from within a Hermes chat session. The browser lives beside the chat in the Hermes desktop app, and you (the agent) can drive it with 21 tools.
+Control the Dev Browser webview pane from within a Hermes chat session. The browser lives beside the chat in the Hermes desktop app, and you (the agent) can drive it with **41 tools**.
 
 ## When to Use
 
@@ -17,6 +17,7 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 - The user asks you to pick an element from the browser and work with its reference
 - The user wants to automate a web flow (click buttons, fill forms, type text)
 - The user wants to test login flows, clear cookies, or switch device modes
+- The user wants to wait for elements, intercept network calls, or export PDFs
 
 ## Prerequisites
 
@@ -24,9 +25,9 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 - The Dev Browser plugin must be installed and loaded
 - If tools don't appear, the user needs to `/reset` or restart the desktop app
 
-## Tools Reference
+## Tools Reference (41 tools)
 
-### Navigation & Inspection
+### Navigation & Inspection (5)
 
 | Tool | Params | Returns | Notes |
 |------|--------|---------|-------|
@@ -36,7 +37,7 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 | `dev_browser_screenshot` | none | `{success, image_data_url}` | Returns a `data:image/png;base64,...` URL. Use `vision_analyze` to inspect it. |
 | `dev_browser_pick_element` | `insert_to_composer` (optional, default true) | `{success, element, inserted_to_composer}` | Starts an interactive element picker. The user clicks an element in the browser. Returns the element's tag, ID, class, CSS selector, HTML, text, attributes, position, and size. When `insert_to_composer=true`, the reference is also inserted into the chat composer. |
 
-### Tab Management
+### Tab Management (4)
 
 | Tool | Params | Returns | Notes |
 |------|--------|---------|-------|
@@ -45,7 +46,7 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 | `dev_browser_close_tab` | `index` (optional, default -1 = active) | `{success, closed, remaining}` | Closes a tab by index. |
 | `dev_browser_switch_tab` | `index` (required) | `{success, active_index, url}` | Switches to a tab by index. |
 
-### Console & Network
+### Console & Network (3)
 
 | Tool | Params | Returns | Notes |
 |------|--------|---------|-------|
@@ -53,7 +54,7 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 | `dev_browser_clear_console` | none | `{success, cleared}` | Clears console for active tab. |
 | `dev_browser_get_network` | none | `{success, entries, count}` | Returns last 50 network requests. |
 
-### Device & Storage
+### Device & Storage (3)
 
 | Tool | Params | Returns | Notes |
 |------|--------|---------|-------|
@@ -61,7 +62,7 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 | `dev_browser_clear_cache` | none | `{success, cleared}` | Hard reload bypassing cache. |
 | `dev_browser_clear_cookies` | none | `{success, cleared}` | Clears localStorage, sessionStorage, and reloads. |
 
-### Mouse & Keyboard Simulation
+### Mouse & Keyboard Simulation (6)
 
 | Tool | Params | Returns | Notes |
 |------|--------|---------|-------|
@@ -71,6 +72,41 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 | `dev_browser_press_key` | `key` (str, required) | `{success, key, method}` | Presses a keyboard key. Examples: 'Enter', 'Tab', 'Escape', 'ArrowDown', 'a', 'Backspace'. |
 | `dev_browser_scroll` | `x` (int, default 0), `y` (int, default 0), `direction` ("up"\|"down", default "down"), `amount` (int, default 300) | `{success, direction, amount, method}` | Scrolls at coordinates. Native: `mouseWheel` event. JS: `window.scrollBy()`. |
 | `dev_browser_drag` | `x1` (int), `y1` (int), `x2` (int), `y2` (int) | `{success, from, to, method}` | Drags from (x1,y1) to (x2,y2). Native: move+down+move+up sequence. JS: dragstart+drag+dragend events. |
+
+### DOM Inspection & Automation (9)
+
+| Tool | Params | Returns | Notes |
+|------|--------|---------|-------|
+| `dev_browser_wait_for_selector` | `selector` (str, required), `timeout` (int, default 10000), `visible` (bool, default true) | `{success, selector, found}` | Polls until element exists in DOM. Timeout in ms. |
+| `dev_browser_get_page_text` | none | `{success, text}` | Extracts all visible text content from the page. |
+| `dev_browser_get_dom_snapshot` | `max_depth` (int, default 5) | `{success, snapshot}` | Returns a simplified DOM tree as JSON. |
+| `dev_browser_fill_form` | `fields` (dict, required) | `{success, filled}` | Fills multiple form fields at once. Keys are CSS selectors, values are the text. |
+| `dev_browser_wait_for_navigation` | `timeout` (int, default 15000) | `{success, navigated}` | Waits for page navigation to complete. |
+| `dev_browser_hover` | `selector` (str, required) | `{success, selector}` | Triggers CSS `:hover` on element by selector. |
+| `dev_browser_select_option` | `selector` (str, required), `value` (str, required) | `{success, selector, value}` | Sets value of a `<select>` element. |
+| `dev_browser_press_key_combo` | `keys` (list, required) | `{success, keys}` | Presses key combos like ["ctrl", "Enter"]. |
+| `dev_browser_get_element_info` | `selector` (str, required) | `{success, element}` | Gets detailed element info: tag, id, classes, attributes, position, size, text. |
+
+### Data & Debugging (9)
+
+| Tool | Params | Returns | Notes |
+|------|--------|---------|-------|
+| `dev_browser_get_cookies` | none | `{success, cookies}` | Reads cookies for the current page. |
+| `dev_browser_get_local_storage` | `key` (str, optional) | `{success, data}` | Gets all localStorage or a specific key. |
+| `dev_browser_get_computed_style` | `selector` (str, required), `properties` (list, optional) | `{success, styles}` | Gets computed CSS of an element. |
+| `dev_browser_intercept_network` | `url_pattern` (str, optional), `method` (str, optional), `timeout` (int, default 10000) | `{success, request}` | Waits for a specific network request matching the pattern. |
+| `dev_browser_screenshot_element` | `selector` (str, required) | `{success, image_data_url}` | Screenshots a single element by selector. |
+| `dev_browser_execute_script` | `script` (str, required) | `{success, result}` | Runs multi-line async JS in page context. Supports `await`. |
+| `dev_browser_handle_dialog` | `action` (str, default "accept"), `prompt_text` (str, optional) | `{success, action}` | Accept/dismiss alert/confirm/prompt dialogs. |
+| `dev_browser_upload_file` | `selector` (str, required), `file_path` (str, required) | `{success, selector}` | Triggers file input dialog and uploads a file. |
+| `dev_browser_pdf_export` | none | `{success}` | Triggers the browser print dialog for PDF export. |
+
+### Utilities (2)
+
+| Tool | Params | Returns | Notes |
+|------|--------|---------|-------|
+| `dev_browser_bookmark_management` | `action` (str: "add", "remove", "list"), `url` (str, optional), `title` (str, optional) | `{success, action}` | Manages bookmarks from the agent. |
+| `dev_browser_set_viewport` | `width` (int, required), `height` (int, required) | `{success, width, height}` | Sets custom viewport dimensions. |
 
 ## Common Workflows
 
@@ -95,41 +131,33 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
    dev_browser_eval(script="document.querySelector('form > input#email').value")
 ```
 
-### Automate a login flow
+### Automate a login flow (with wait_for_selector)
 
 ```
 1. dev_browser_navigate(url="localhost:4000/login")
-2. dev_browser_screenshot()
-   → vision_analyze to find the email input field position
-3. dev_browser_click(x=200, y=250)
-   → click on the email input
-4. dev_browser_type(text="admin@example.com")
-5. dev_browser_press_key(key="Tab")
-   → move to password field
-6. dev_browser_type(text="password123")
-7. dev_browser_press_key(key="Enter")
-8. dev_browser_screenshot()
+2. dev_browser_wait_for_selector(selector="#email", timeout=5000)
+3. dev_browser_fill_form(fields={"#email": "admin@example.com", "#password": "secret123"})
+4. dev_browser_click(x=200, y=350)  → click submit
+5. dev_browser_wait_for_navigation(timeout=10000)
+6. dev_browser_screenshot()
    → check if login succeeded
-9. dev_browser_get_console(level="error")
+7. dev_browser_get_console(level="error")
    → check for errors
 ```
 
-### Fill and submit a form
+### Fill and submit a form (with fill_form)
 
 ```
 1. dev_browser_navigate(url="localhost:4000/register")
-2. dev_browser_screenshot()
-   → find form fields visually
-3. dev_browser_click(x=150, y=200)
-4. dev_browser_type(text="John Doe")
-5. dev_browser_click(x=150, y=250)
-6. dev_browser_type(text="john@example.com")
-7. dev_browser_click(x=150, y=300)
-8. dev_browser_type(text="securepass123")
-9. dev_browser_click(x=150, y=400)
-   → click submit button
-10. dev_browser_screenshot()
-    → verify result
+2. dev_browser_wait_for_selector(selector="form", timeout=5000)
+3. dev_browser_fill_form(fields={
+       "#name": "John Doe",
+       "#email": "john@example.com",
+       "#password": "securepass123"
+   })
+4. dev_browser_press_key_combo(keys=["ctrl", "Enter"])
+5. dev_browser_wait_for_navigation(timeout=15000)
+6. dev_browser_screenshot()
 ```
 
 ### Debug a page with console and network
@@ -137,11 +165,18 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 ```
 1. dev_browser_navigate(url="localhost:4000")
 2. dev_browser_get_console(level="error")
-   → check for JS errors
 3. dev_browser_get_network()
-   → check for failed requests (4xx, 5xx)
 4. dev_browser_eval(script="document.title")
 5. dev_browser_screenshot()
+```
+
+### Intercept an API call
+
+```
+1. dev_browser_navigate(url="localhost:4000/dashboard")
+2. dev_browser_intercept_network(url_pattern="/api/data", method="GET", timeout=10000)
+   → returns the request details when it matches
+3. dev_browser_get_console(level="error")
 ```
 
 ### Multi-tab workflow
@@ -181,6 +216,8 @@ All x/y coordinates are **relative to the webview's top-left corner**, not the s
 - **User-agent is spoofed to Chrome 131.** Google login works. Some services that check for specific Chrome features (beyond UA) may still detect the webview.
 - **Mouse simulation may not work with iframes.** Electron has a known bug (#20333) where `sendInputEvent` doesn't route to nested iframes. The JS fallback handles most cases.
 - **`sendInputEvent` requires window focus.** If the Hermes window isn't focused, native input events may not work. The JS fallback doesn't have this requirement.
+- **`dev_browser_eval` vs `dev_browser_execute_script`**: Use `eval` for single-line synchronous expressions. Use `execute_script` for multi-line async code with `await`.
+- **`dev_browser_fill_form` requires CSS selectors as keys**, not element references. The form fields must exist in the DOM before calling.
 
 ## Architecture (for context, not for action)
 
