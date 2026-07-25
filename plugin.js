@@ -1942,15 +1942,11 @@ function TabBar() {
                     children: jsx(icons.X, { className: 'size-3' }),
                   }) : null,
               // Unpin button for pinned tabs (visible on hover, absolute so it doesn't shift the favicon)
+              // Only responds to right-click (context menu) to avoid accidental unpin on left-click
               tab.pinned ? jsx('button', {
                     type: 'button',
                     className:
-                      'absolute top-0 right-0 inline-flex h-4 w-4 items-center justify-center rounded-sm text-[var(--ui-text-tertiary)] hover:bg-[var(--ui-stroke-secondary)] hover:text-[var(--ui-text-primary)] transition-opacity opacity-0 group-hover/tab:opacity-100',
-                    onClick: (e) => {
-                      e.stopPropagation()
-                      haptic('tap')
-                      togglePinTab(index)
-                    },
+                      'absolute top-0 right-0 inline-flex h-4 w-4 items-center justify-center rounded-sm text-[var(--ui-text-tertiary)] hover:bg-[var(--ui-stroke-secondary)] hover:text-[var(--ui-text-primary)] transition-opacity opacity-0 group-hover/tab:opacity-100 pointer-events-none',
                     title: t('unpinTab'),
                     'aria-label': t('unpinTab'),
                     children: jsx(icons.X, { className: 'size-3' }),
