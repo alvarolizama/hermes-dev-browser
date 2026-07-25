@@ -1,0 +1,47 @@
+name: hermes-dev-browser
+version: 2.0.0
+description: "Full-featured web browser pane with DevTools, multi-tab, OAuth support, element picker, bookmarks, incognito mode, and 41 agent-controlled automation tools (navigation, DOM inspection, form filling, mouse/keyboard simulation, network interception, screenshots, and more)."
+author: alvarolizama
+kind: backend
+provides_tools:
+  - dev_browser_navigate
+  - dev_browser_eval
+  - dev_browser_screenshot
+  - dev_browser_list_tabs
+  - dev_browser_new_tab
+  - dev_browser_close_tab
+  - dev_browser_switch_tab
+  - dev_browser_get_url
+  - dev_browser_get_console
+  - dev_browser_clear_console
+  - dev_browser_get_network
+  - dev_browser_set_device_mode
+  - dev_browser_clear_cache
+  - dev_browser_clear_cookies
+  - dev_browser_pick_element
+  - dev_browser_mouse_move
+  - dev_browser_click
+  - dev_browser_type
+  - dev_browser_press_key
+  - dev_browser_scroll
+  - dev_browser_drag
+  - dev_browser_wait_for_selector
+  - dev_browser_get_page_text
+  - dev_browser_get_dom_snapshot
+  - dev_browser_fill_form
+  - dev_browser_wait_for_navigation
+  - dev_browser_hover
+  - dev_browser_select_option
+  - dev_browser_press_key_combo
+  - dev_browser_upload_file
+  - dev_browser_handle_dialog
+  - dev_browser_get_cookies
+  - dev_browser_get_local_storage
+  - dev_browser_get_computed_style
+  - dev_browser_intercept_network
+  - dev_browser_screenshot_element
+  - dev_browser_execute_script
+  - dev_browser_pdf_export
+  - dev_browser_bookmark_management
+  - dev_browser_set_viewport
+  - dev_browser_get_element_info
