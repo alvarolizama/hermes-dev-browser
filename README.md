@@ -8,9 +8,11 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 
 ### Features
 
-- **🌐 Full navigation** — URL bar, back/forward/reload/home, multi-tab support
-- **📌 Pinned tabs** — Right-click any tab to pin/unpin; pinned tabs show only the favicon (centered) and sort to the left, with an unpin button on hover
-- **🔖 Bookmarks** — Save and manage bookmarks with quick access dropdown
+- **🌐 Full navigation** — URL bar, back/forward/reload, multi-tab support
+- **📌 Pinned tabs** — Right-click any tab to pin/unpin; pinned tabs show only the favicon (centered, compact) and sort to the left, with an unpin button on hover
+- **🔖 Bookmarks** — Save pages with a bookmark toggle button (filled accent when saved); bookmarks dropdown shows favicons and titles, click to open in new tab
+- **🖼️ Favicons everywhere** — Favicons displayed in tabs, URL bar, and bookmarks dropdown with Globe fallback
+- **🔐 Incognito mode** — Toggle incognito with Eye/EyeOff icon; new tabs use an ephemeral partition (no cookies, localStorage, or history persisted)
 - **🔐 OAuth & Google login** — User-agent spoofing bypasses Google's Electron webview block; `allowpopups` enables OAuth flows
 - **🍪 Persistent sessions** — Cookies, localStorage, and IndexedDB survive app restarts via `persist:hermes-dev-browser` partition
 - **🐛 DevTools** — Toggle Chromium DevTools with one click
@@ -18,7 +20,7 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 - **📡 Network inspector** — Basic request tracking with status code colors
 - **📱 Device mode** — Switch between desktop, mobile (375px), and tablet (768px) viewports
 - **🔄 Auto-refresh** — File watching with debounced reload on changes
-- **🎯 Element picker** — Click any element in the browser to capture its CSS selector, HTML, attributes, and text — automatically inserted into the chat composer as a reference for the agent
+- **🔍 Element picker** — Click the ZoomIn icon or right-click anywhere on the page to toggle the element picker; captures CSS selector, HTML, attributes, and text — automatically inserted into the chat composer as a reference for the agent
 - **🖱️ Mouse & keyboard simulation** — Move cursor, click, type, press keys, scroll, and drag — using native Electron `sendInputEvent` with JS fallback. Enables agent-driven automated testing.
 - **🤖 Agent-controlled** — 21 tools the AI agent can call to navigate, eval JS, take screenshots, manage tabs, read console, clear cookies, simulate input, and more
 - **⌨️ Keyboard shortcuts** — `Cmd+R` reload, `Cmd+Option+I` DevTools, `Cmd+L` focus URL bar
@@ -85,7 +87,7 @@ plugins:
 1. **⌘K** → **"Open Dev Browser"** to open the pane
 2. Type a URL in the address bar and press Enter
 3. Use back/forward/reload buttons for navigation
-4. Click the **Eye** 👁️ icon to start the element picker
+4. Click the **ZoomIn** 🔍 icon (or right-click the page) to toggle the element picker
 5. Click any element in the browser → its reference appears in your chat composer
 
 ### Agent-controlled browsing
@@ -107,7 +109,7 @@ The agent can control the browser using 21 tools. Ask it to:
 
 ### Element picker
 
-Click the 👁️ icon in the toolbar (or ⌘K → "Dev Browser: Pick Element"), then click any element in the browser. The element's selector, HTML, attributes, and text are formatted and inserted into your chat composer:
+Click the 🔍 icon in the toolbar (or right-click anywhere on the page, or ⌘K → "Dev Browser: Pick Element"), then click any element in the browser. The element's selector, HTML, attributes, and text are formatted and inserted into your chat composer:
 
 ```
 🔍 Element picked from http://localhost:4000/login
@@ -204,7 +206,7 @@ dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
 │  ┌───────────────┐  ┌────────────────────────────────────────┐ │
 │  │   Chat        │  │  Dev Browser Pane (plugin.js)           │ │
 │  │               │  │ ┌──────────────────────────────────────┐ │ │
-│  │  Agent calls  │  │ │ ◀ ▶ ⟳ 👁 │ localhost:4000  │ ⋯     │ │ │
+│  │  Agent calls  │  │ │ ◀ ▶ ⟳ 🔖 │ localhost:4000  │ 🔖 👁  │ │ │
 │  │  dev_browser_*│◄─┤ ├──────────────────────────────────────┤ │ │
 │  │  tools        │  │ │  <webview> (Electron)                │ │ │
 │  │               │  │ │  - UA: Chrome 131 (spoofed)          │ │ │

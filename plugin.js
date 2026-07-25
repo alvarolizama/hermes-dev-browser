@@ -1966,11 +1966,24 @@ function TabBar() {
   })
 }
 
-/** Bookmarks modal — centered overlay with the list of saved bookmarks. */
+/** Bookmarks dropdown — appears below the bookmark button. */
 function BookmarksMenu({ bookmarks, t }) {
   const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
 
   return jsxs('div', {
+    ref: ref,
     className: 'relative',
     children: [
       jsx(IconButton, {
@@ -1979,24 +1992,22 @@ function BookmarksMenu({ bookmarks, t }) {
         onClick: () => setOpen(!open),
         active: open,
       }),
-      // Backdrop — captures outside clicks, doesn't wrap the dropdown
-      open ? jsx('div', {
-        className: 'fixed inset-0 z-[200]',
-        onClick: () => setOpen(false),
-      }) : null,
-      // Dropdown — positioned relative to the button container, below it
+      // Dropdown — below the button, aligned right
       open ? jsxs('div', {
-        className: 'absolute top-full right-0 mt-1 w-80 max-h-[60vh] rounded-lg border border-[var(--ui-stroke-secondary)] shadow-2xl z-[201] flex flex-col overflow-hidden',
-        style: { backgroundColor: 'var(--ui-bg-elevated, #1a1a1a)' },
+        className: 'absolute top-full right-0 mt-1 w-72 max-h-80 flex flex-col shadow-2xl rounded-lg overflow-hidden',
+        style: { backgroundColor: 'rgb(26, 26, 26)', border: '1px solid rgb(60, 60, 60)', zIndex: 9999 },
         children: [
           // Header
           jsxs('div', {
-            className: 'flex items-center justify-between px-4 py-3 border-b border-[var(--ui-stroke-secondary)]',
+            className: 'flex items-center justify-between px-4 py-2.5',
+            style: { borderBottom: '1px solid rgb(60, 60, 60)' },
             children: [
-              jsx('span', { className: 'text-sm font-medium text-[var(--ui-text-primary)]', children: t('bookmarks') }),
+              jsx('span', { className: 'text-sm font-medium', style: { color: '#fff' }, children: t('bookmarks') }),
               jsx('button', {
                 type: 'button',
-                className: 'text-[var(--ui-text-tertiary)] hover:text-[var(--ui-text-primary)] transition-colors',
+                style: { color: 'rgb(150, 150, 150)' },
+                onMouseEnter: function (e) { e.currentTarget.style.color = '#fff' },
+                onMouseLeave: function (e) { e.currentTarget.style.color = 'rgb(150, 150, 150)' },
                 onClick: () => setOpen(false),
                 children: jsx(icons.X, { className: 'size-4' }),
               }),
@@ -2006,12 +2017,15 @@ function BookmarksMenu({ bookmarks, t }) {
           jsx('div', {
             className: 'flex-1 overflow-y-auto',
             children: bookmarks.length === 0
-              ? jsx('div', { className: 'px-3 py-8 text-xs text-[var(--ui-text-quaternary)] text-center', children: t('noBookmarks') })
+              ? jsx('div', { className: 'px-3 py-8 text-xs text-center', style: { color: 'rgb(100, 100, 100)' }, children: t('noBookmarks') })
               : bookmarks.map(function (bm) {
                   var favUrl
                   try { favUrl = new URL(bm.url).origin + '/favicon.ico' } catch { favUrl = null }
                   return jsxs('div', {
-                    className: 'group/bm flex items-center gap-2 px-4 py-2.5 hover:bg-[var(--ui-stroke-secondary)] cursor-pointer text-xs',
+                    className: 'group/bm flex items-center gap-2 px-4 py-2 cursor-pointer text-xs transition-colors',
+                    style: { color: 'rgb(200, 200, 200)' },
+                    onMouseEnter: function (e) { e.currentTarget.style.backgroundColor = 'rgb(45, 45, 45)' },
+                    onMouseLeave: function (e) { e.currentTarget.style.backgroundColor = '' },
                     onClick: () => {
                       addTab(bm.url)
                       setOpen(false)
@@ -2019,10 +2033,12 @@ function BookmarksMenu({ bookmarks, t }) {
                     children: [
                       favUrl
                         ? jsx('img', { src: favUrl, className: 'size-3.5 shrink-0 rounded-sm', onError: function (e) { e.target.style.display = 'none' } })
-                        : jsx(icons.Globe, { className: 'size-3.5 shrink-0 text-[var(--ui-text-tertiary)]' }),
-                      jsx('span', { className: 'flex-1 truncate text-[var(--ui-text-secondary)]', children: bm.title || compactUrl(bm.url) }),
+                        : jsx(icons.Globe, { className: 'size-3.5 shrink-0', style: { color: 'rgb(150, 150, 150)' } }),
+                      jsx('span', { className: 'flex-1 truncate', children: bm.title || compactUrl(bm.url) }),
                       jsx('button', {
-                        className: 'opacity-0 group-hover/bm:opacity-100 text-[var(--ui-text-quaternary)] hover:text-[var(--ui-text-primary)] transition-opacity',
+                        className: 'opacity-0 group-hover/bm:opacity-100 transition-opacity',
+                        style: { color: 'rgb(100, 100, 100)' },
+                        onMouseEnter: function (e) { e.currentTarget.style.color = '#fff' },
                         onClick: (e) => {
                           e.stopPropagation()
                           removeBookmark(bm.url)
