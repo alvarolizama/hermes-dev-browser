@@ -1,6 +1,6 @@
 # Hermes Dev Browser
 
-A full-featured web browser pane for the [Hermes Agent](https://hermes-agent.nousresearch.com) desktop app. Browse, debug, inspect, and automate web apps directly beside your AI chat — with DevTools, console capture, network monitoring, multi-tab support, OAuth login, element picker, and mouse/keyboard simulation for automated testing.
+A full-featured web browser pane for the [Hermes Agent](https://hermes-agent.nousresearch.com) desktop app. Browse, debug, inspect, and automate web apps directly beside your AI chat — with DevTools, console capture, network monitoring, multi-tab support, OAuth login, bookmarks, incognito mode, element picker, and 41 agent-controlled automation tools.
 
 ## What it is
 
@@ -22,50 +22,42 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 - **🔄 Auto-refresh** — File watching with debounced reload on changes
 - **🔍 Element picker** — Click the ZoomIn icon or right-click anywhere on the page to toggle the element picker; captures CSS selector, HTML, attributes, and text — automatically inserted into the chat composer as a reference for the agent
 - **🖱️ Mouse & keyboard simulation** — Move cursor, click, type, press keys, scroll, and drag — using native Electron `sendInputEvent` with JS fallback. Enables agent-driven automated testing.
-- **🤖 Agent-controlled** — 21 tools the AI agent can call to navigate, eval JS, take screenshots, manage tabs, read console, clear cookies, simulate input, and more
+- **🤖 Agent-controlled** — 41 tools the AI agent can call to navigate, inspect DOM, fill forms, wait for elements, intercept network requests, take screenshots, manage tabs, simulate input, and more
 - **⌨️ Keyboard shortcuts** — `Cmd+R` reload, `Cmd+Option+I` DevTools, `Cmd+L` focus URL bar
 - **🎨 Theme-aware** — Uses the app's CSS variables, adapts to any theme automatically
 - **↔️ Resizable** — Drag the pane sash to any width, no maximum
 
 ## Installation
 
-### 1. Install the plugin files
+### 1. Install the desktop plugin (browser UI)
 
 ```bash
-# Desktop plugin (the browser pane UI)
 mkdir -p ~/.hermes/desktop-plugins/hermes-dev-browser
 curl -o ~/.hermes/desktop-plugins/hermes-dev-browser/plugin.js \
-  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/plugin/plugin.js
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/plugin.js
+```
+
+### 2. Install the Python plugin (agent tools)
+
+```bash
+mkdir -p ~/.hermes/plugins/hermes-dev-browser/dashboard
+
+# Python plugin (tool registration via ctx.register_tool — survives Hermes updates)
+curl -o ~/.hermes/plugins/hermes-dev-browser/__init__.py \
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/__init__.py
+curl -o ~/.hermes/plugins/hermes-dev-browser/tools.py \
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/tools.py
+curl -o ~/.hermes/plugins/hermes-dev-browser/plugin.yaml \
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/plugin.yaml
 
 # Backend (REST mailbox for agent tool results)
-mkdir -p ~/.hermes/plugins/hermes-dev-browser/dashboard
 curl -o ~/.hermes/plugins/hermes-dev-browser/dashboard/manifest.json \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/backend/manifest.json
 curl -o ~/.hermes/plugins/hermes-dev-browser/dashboard/plugin_api.py \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/backend/plugin_api.py
-
-# Agent tools (Python tools the AI uses to control the browser)
-curl -o ~/.hermes/hermes-agent/tools/dev_browser_tool.py \
-  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/tools/dev_browser_tool.py
 ```
 
-### 2. Register the tools in toolsets.py
-
-Add the dev_browser tool names to `_HERMES_CORE_TOOLS` in `~/.hermes/hermes-agent/toolsets.py`:
-
-```python
-# Dev Browser — agent-controlled webview pane (desktop-gated via check_fn)
-"dev_browser_navigate", "dev_browser_eval", "dev_browser_screenshot",
-"dev_browser_list_tabs", "dev_browser_new_tab", "dev_browser_close_tab",
-"dev_browser_switch_tab", "dev_browser_get_url", "dev_browser_get_console",
-"dev_browser_clear_console", "dev_browser_get_network",
-"dev_browser_set_device_mode", "dev_browser_clear_cache", "dev_browser_clear_cookies",
-"dev_browser_pick_element",
-"dev_browser_mouse_move", "dev_browser_click", "dev_browser_type",
-"dev_browser_press_key", "dev_browser_scroll", "dev_browser_drag",
-```
-
-### 3. Enable the Python backend
+### 3. Enable the plugin in config.yaml
 
 Add `hermes-dev-browser` to `plugins.enabled` in `~/.hermes/config.yaml`:
 
@@ -80,6 +72,8 @@ plugins:
 - **⌘K** → **"Reload desktop plugins"** in the Hermes desktop app
 - Start a new session (`/reset`) so the new tools load
 
+> **Note:** No need to edit `toolsets.py` or `hermes-agent/tools/`. The Python plugin registers all 41 tools dynamically via `ctx.register_tool()`, so it survives Hermes updates without modification.
+
 ## Usage
 
 ### Manual browsing
@@ -89,23 +83,28 @@ plugins:
 3. Use back/forward/reload buttons for navigation
 4. Click the **ZoomIn** 🔍 icon (or right-click the page) to toggle the element picker
 5. Click any element in the browser → its reference appears in your chat composer
+6. Click the **bookmark** 🔖 icon to save the current page
+7. Click the **Eye/EyeOff** icon to toggle incognito mode
 
 ### Agent-controlled browsing
 
-The agent can control the browser using 21 tools. Ask it to:
+The agent can control the browser using 41 tools. Ask it to:
 
 - "Open localhost:4000 in the dev browser"
 - "Take a screenshot of the current page"
 - "Run `document.title` in the browser"
-- "List all open tabs"
-- "Clear cookies and reload"
-- "Switch to mobile mode"
-- "Pick an element from the page"
-- "Click the submit button at (200, 300)"
-- "Type 'hello world' into the focused input"
-- "Press Enter"
-- "Scroll down 500px"
-- "Drag from (100,100) to (300,300)"
+- "Wait for the `#submit-button` selector to appear"
+- "Get the page text content"
+- "Fill the login form with email and password"
+- "Get the DOM snapshot of the page"
+- "Hover over the dropdown menu"
+- "Select the second option in the country dropdown"
+- "Press Ctrl+Enter to submit the form"
+- "Wait for the API call to `/api/login` to complete"
+- "Get the computed style of the header element"
+- "Take a screenshot of just the navigation bar"
+- "Get all cookies for the current page"
+- "Execute a multi-line script that fetches data from the API"
 
 ### Element picker
 
@@ -147,11 +146,83 @@ dev_browser_scroll(x=0, y=0, direction="down", amount=500)
 
 # Drag
 dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
+
+# Press key combo (Ctrl+Enter, Shift+Tab, etc)
+dev_browser_press_key_combo(keys=["ctrl", "Enter"])
+
+# Hover over an element by selector
+dev_browser_hover(selector="#dropdown-menu")
+
+# Select an option in a <select> dropdown
+dev_browser_select_option(selector="#country", value="MX")
+```
+
+### DOM inspection & automation
+
+```python
+# Wait for an element to appear (with timeout)
+dev_browser_wait_for_selector(selector="#results", timeout=10000, visible=True)
+
+# Get all visible text from the page
+dev_browser_get_page_text()
+
+# Get a simplified DOM tree as JSON
+dev_browser_get_dom_snapshot(max_depth=5)
+
+# Fill multiple form fields at once
+dev_browser_fill_form(fields={
+    "#email": "admin@example.com",
+    "#password": "secret123"
+})
+
+# Wait for page navigation to complete
+dev_browser_wait_for_navigation(timeout=15000)
+
+# Get detailed info about an element by selector
+dev_browser_get_element_info(selector="#submit-btn")
+```
+
+### Data & debugging
+
+```python
+# Get cookies
+dev_browser_get_cookies()
+
+# Get localStorage (all or by key)
+dev_browser_get_local_storage(key="auth_token")
+
+# Get computed CSS styles
+dev_browser_get_computed_style(selector="header", properties=["display", "position"])
+
+# Intercept a specific network request
+dev_browser_intercept_network(url_pattern="/api/login", method="POST", timeout=10000)
+
+# Take a screenshot of a single element
+dev_browser_screenshot_element(selector="#chart")
+
+# Execute multi-line async JS
+dev_browser_execute_script(script="""
+const res = await fetch('/api/data');
+const data = await res.json();
+return data;
+""")
+
+# Handle alert/confirm/prompt dialogs
+dev_browser_handle_dialog(action="accept", prompt_text="Hello")
+
+# Upload a file (opens file dialog)
+dev_browser_upload_file(selector="input[type=file]", file_path="/path/to/file.pdf")
+
+# Export page as PDF (opens print dialog)
+dev_browser_pdf_export()
+
+# Set custom viewport size
+dev_browser_set_viewport(width=1024, height=768)
 ```
 
 ## Agent Tools
 
-### Navigation & Inspection
+### Navigation & Inspection (original)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -186,7 +257,7 @@ dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
 | `dev_browser_clear_cache` | 🗑️ | Clear cache and reload |
 | `dev_browser_clear_cookies` | 🍪 | Clear cookies and storage |
 
-### Mouse & Keyboard Simulation
+### Mouse & Keyboard Simulation (original)
 
 | Tool | Emoji | Description |
 |------|-------|-------------|
@@ -196,6 +267,41 @@ dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
 | `dev_browser_press_key` | 🔑 | Press keyboard key (Enter, Tab, etc) |
 | `dev_browser_scroll` | 📜 | Scroll at (x, y) up/down |
 | `dev_browser_drag` | ✋ | Drag from (x1,y1) to (x2,y2) |
+
+### DOM Inspection & Automation (new)
+
+| Tool | Emoji | Description |
+|------|-------|-------------|
+| `dev_browser_wait_for_selector` | ⏳ | Poll until element exists (with timeout) |
+| `dev_browser_get_page_text` | 📄 | Extract all visible text from page |
+| `dev_browser_get_dom_snapshot` | 🌳 | Simplified DOM tree as JSON |
+| `dev_browser_fill_form` | 📝 | Fill multiple form fields at once |
+| `dev_browser_wait_for_navigation` | ⏱️ | Wait for page load to complete |
+| `dev_browser_hover` | 🖱️ | Trigger CSS :hover on element by selector |
+| `dev_browser_select_option` | 📋 | Set value of a `<select>` element |
+| `dev_browser_press_key_combo` | ⌨️ | Press key combos (Ctrl+Enter, Shift+Tab) |
+| `dev_browser_get_element_info` | 🔍 | Detailed element info by selector |
+
+### Data & Debugging (new)
+
+| Tool | Emoji | Description |
+|------|-------|-------------|
+| `dev_browser_get_cookies` | 🍪 | Read cookies for current page |
+| `dev_browser_get_local_storage` | 💾 | Get all or specific localStorage entries |
+| `dev_browser_get_computed_style` | 🎨 | Get computed CSS of element |
+| `dev_browser_intercept_network` | 📡 | Wait for specific network request pattern |
+| `dev_browser_screenshot_element` | 📸 | Screenshot a single element by selector |
+| `dev_browser_execute_script` | 📜 | Run multi-line async JS in page context |
+| `dev_browser_handle_dialog` | 💬 | Accept/dismiss alert/confirm/prompt |
+| `dev_browser_upload_file` | 📎 | Trigger file input dialog |
+| `dev_browser_pdf_export` | 📄 | Trigger print dialog |
+
+### Utilities (new)
+
+| Tool | Emoji | Description |
+|------|-------|-------------|
+| `dev_browser_bookmark_management` | 🔖 | Add/remove/list bookmarks from agent |
+| `dev_browser_set_viewport` | 📐 | Set custom viewport dimensions |
 
 ## Architecture
 
@@ -209,7 +315,7 @@ dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
 │  │  Agent calls  │  │ │ ◀ ▶ ⟳ 🔖 │ localhost:4000  │ 🔖 👁  │ │ │
 │  │  dev_browser_*│◄─┤ ├──────────────────────────────────────┤ │ │
 │  │  tools        │  │ │  <webview> (Electron)                │ │ │
-│  │               │  │ │  - UA: Chrome 131 (spoofed)          │ │ │
+│  │  (41 tools)   │  │ │  - UA: Chrome 131 (spoofed)          │ │ │
 │  │               │  │ │  - allowpopups (OAuth)               │ │ │
 │  │               │  │ │  - persist:hermes-dev-browser         │ │ │
 │  │               │  │ │  - DevTools toggle 🐛                │ │ │
@@ -219,8 +325,13 @@ dev_browser_drag(x1=100, y1=100, x2=300, y2=300)
 │  │               │  │ └──────────────────────────────────────┘ │ │
 │  └───────────────┘  └────────────────────────────────────────┘ │
 │                                                                │
-│  Backend: plugin_api.py (REST mailbox at /api/plugins/hermes-dev-browser/) │
-│  Tools: dev_browser_tool.py (21 agent tools)                   │
+│  Python Plugin (~/.hermes/plugins/hermes-dev-browser/)          │
+│  ├── __init__.py  → register(ctx) — ctx.register_tool() ×41    │
+│  ├── tools.py     → 41 tool functions + 41 schemas              │
+│  ├── plugin.yaml  → manifest with provides_tools               │
+│  └── dashboard/   → plugin_api.py (REST mailbox)               │
+│                                                                │
+│  No hermes-agent core files modified — survives updates.       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -234,13 +345,22 @@ Each input tool tries two methods:
 
 The result includes `method: 'native'` or `method: 'js'` so the agent knows which path was used.
 
+### Tool registration — plugin system (survives Hermes updates)
+
+Tools are registered via the Hermes plugin system, not by editing core files:
+
+1. **`__init__.py`** has a `register(ctx)` function called by the plugin loader
+2. It calls `ctx.register_tool()` for each of the 41 tools, registering them in the `terminal` toolset
+3. All tools are gated on `HERMES_DESKTOP` via `check_fn` — they only appear when the desktop app is running
+4. No need to edit `toolsets.py` or `hermes-agent/tools/` — the plugin handles everything
+
 ## How it works
 
-- **Plugin JS** (`plugin/plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, console, network, element picker, and input simulation. Listens for events from the agent via `host.onEvent`.
+- **Plugin JS** (`plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, bookmarks, incognito mode, console, network, element picker, and input simulation. Listens for 42 events from the agent via `host.onEvent`.
+
+- **Python Plugin** (`~/.hermes/plugins/hermes-dev-browser/`) — Registers 41 agent tools via `ctx.register_tool()`. Each tool emits an event to the plugin JS via `desktop_ui.emit()`, then polls the REST mailbox (or uses in-process import) for results.
 
 - **Backend** (`backend/plugin_api.py`) — A FastAPI router mounted at `/api/plugins/hermes-dev-browser/`. Acts as a thread-safe in-memory result mailbox: the plugin JS POSTs results here after executing agent commands (eval, screenshot, click), and the Python tools poll for them.
-
-- **Agent tools** (`tools/dev_browser_tool.py`) — 21 Python tools registered in the `terminal` toolset, gated on `HERMES_DESKTOP`. They emit events to the plugin via `desktop_ui.emit()`, then poll the REST mailbox (or use in-process import) for results.
 
 ## Requirements
 
