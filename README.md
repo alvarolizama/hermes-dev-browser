@@ -26,39 +26,65 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 - **🎨 Theme-aware** — Uses the app's CSS variables, adapts to any theme automatically
 - **↔️ Resizable** — Drag the pane sash to any width, no maximum
 
-## Installation
+## Repo Structure
 
-### 1. Install the desktop plugin (browser UI)
-
-```bash
-mkdir -p ~/.hermes/desktop-plugins/hermes-dev-browser
-curl -o ~/.hermes/desktop-plugins/hermes-dev-browser/plugin.js \
-  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/plugin/plugin.js
+```
+hermes-dev-browser/
+├── desktop/
+│   └── plugin.js              # Browser pane UI (React, 41 tool event handlers)
+├── python/
+│   ├── __init__.py             # Tool registration via ctx.register_tool() ×41
+│   ├── plugin.yaml             # Plugin manifest (name, version, provides_tools)
+│   ├── tools.py                # 41 tool functions + 41 JSON schemas
+│   └── dashboard/
+│       ├── manifest.json       # Dashboard plugin manifest
+│       └── plugin_api.py       # REST mailbox (FastAPI router)
+├── README.md
+├── SKILL.md
+└── LICENSE
 ```
 
-### 2. Install the Python plugin (agent tools)
+## Installation
 
-The Python plugin registers all 41 agent tools via `ctx.register_tool()`. It uses **relative imports** (`from .tools import ...`) so it loads correctly under Hermes' `hermes_plugins.<slug>` namespace — no need to edit `toolsets.py` or any hermes-agent core files.
+### Option A: Symlinks (recommended for development)
+
+Clone the repo and symlink the `desktop/` and `python/` directories into Hermes:
 
 ```bash
-mkdir -p ~/.hermes/plugins/hermes-dev-browser/dashboard
+git clone https://github.com/alvarolizama/hermes-dev-browser.git ~/Workspace/Repos/hermes-dev-browser
 
-# Python plugin (tool registration + tool implementations)
+# Desktop plugin (browser UI) → desktop/
+ln -s ~/Workspace/Repos/hermes-dev-browser/desktop ~/.hermes/desktop-plugins/hermes-dev-browser
+
+# Python plugin (agent tools + dashboard) → python/
+ln -s ~/Workspace/Repos/hermes-dev-browser/python ~/.hermes/plugins/hermes-dev-browser
+```
+
+Edit in `~/Workspace/Repos/hermes-dev-browser/`, git push from there, and Hermes reads changes in real-time via the symlinks. No copy scripts needed.
+
+### Option B: Manual install (for non-dev setups)
+
+```bash
+# Desktop plugin (browser UI)
+mkdir -p ~/.hermes/desktop-plugins/hermes-dev-browser
+curl -o ~/.hermes/desktop-plugins/hermes-dev-browser/plugin.js \
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/desktop/plugin.js
+
+# Python plugin (agent tools + dashboard)
+mkdir -p ~/.hermes/plugins/hermes-dev-browser/dashboard
 curl -o ~/.hermes/plugins/hermes-dev-browser/__init__.py \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/__init__.py
 curl -o ~/.hermes/plugins/hermes-dev-browser/tools.py \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/tools.py
 curl -o ~/.hermes/plugins/hermes-dev-browser/plugin.yaml \
   https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/plugin.yaml
-
-# Backend (REST mailbox for agent tool results)
 curl -o ~/.hermes/plugins/hermes-dev-browser/dashboard/manifest.json \
-  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/backend/manifest.json
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/dashboard/manifest.json
 curl -o ~/.hermes/plugins/hermes-dev-browser/dashboard/plugin_api.py \
-  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/backend/plugin_api.py
+  https://raw.githubusercontent.com/alvarolizama/hermes-dev-browser/main/python/dashboard/plugin_api.py
 ```
 
-### 3. Enable the plugin in config.yaml
+### Enable the plugin in config.yaml
 
 Add `hermes-dev-browser` to `plugins.enabled` in `~/.hermes/config.yaml`:
 
@@ -68,7 +94,7 @@ plugins:
     - hermes-dev-browser
 ```
 
-### 4. Reload
+### Reload
 
 - **⌘K** → **"Reload desktop plugins"** in the Hermes desktop app
 - Start a new session (`/reset`) so the new tools load
@@ -358,11 +384,11 @@ Tools are registered via the Hermes plugin system, not by editing core files:
 
 ## How it works
 
-- **Plugin JS** (`plugin/plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, bookmarks, incognito mode, console, network, element picker, and input simulation. Listens for events from the agent via `host.onEvent`.
+- **Plugin JS** (`desktop/plugin.js`) — A disk plugin loaded by the Hermes desktop app. Registers a pane with a `<webview>` element, toolbar, tabs, bookmarks, incognito mode, console, network, element picker, and input simulation. Listens for events from the agent via `host.onEvent`.
 
 - **Python Plugin** (`python/__init__.py` + `python/tools.py`) — Registers 41 agent tools via `ctx.register_tool()`. Each tool emits an event to the plugin JS via `desktop_ui.emit()`, then polls the REST mailbox (or uses in-process import) for results.
 
-- **Backend** (`backend/plugin_api.py`) — A FastAPI router mounted at `/api/plugins/hermes-dev-browser/`. Acts as a thread-safe in-memory result mailbox: the plugin JS POSTs results here after executing agent commands (eval, screenshot, click), and the Python tools poll for them.
+- **Backend** (`python/dashboard/plugin_api.py`) — A FastAPI router mounted at `/api/plugins/hermes-dev-browser/`. Acts as a thread-safe in-memory result mailbox: the plugin JS POSTs results here after executing agent commands (eval, screenshot, click), and the Python tools poll for them.
 
 ## Requirements
 
