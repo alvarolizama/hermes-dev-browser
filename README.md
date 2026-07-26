@@ -44,6 +44,35 @@ hermes-dev-browser/
 └── LICENSE
 ```
 
+## Quickstart (for agents)
+
+> Run these steps as-is. Everything is relative to the clone location (`$REPO`) and `~/.hermes/` — no machine-specific paths.
+
+```bash
+# 1. Clone
+git clone https://github.com/alvarolizama/hermes-dev-browser.git
+cd hermes-dev-browser && export REPO="$PWD"
+
+# 2. Python plugin (41 agent tools + REST backend)
+ln -sfn "$REPO/python" ~/.hermes/plugins/hermes-dev-browser
+
+# 3. Desktop plugin (browser pane UI)
+ln -sfn "$REPO/desktop" ~/.hermes/desktop-plugins/hermes-dev-browser
+
+# 4. Skill (agent operating manual — symlink the whole repo, SKILL.md must be at the root)
+ln -sfn "$REPO" ~/.hermes/skills/software-development/hermes-dev-browser
+```
+
+Enable the plugin in `~/.hermes/config.yaml`:
+
+```yaml
+plugins:
+  enabled:
+    - hermes-dev-browser
+```
+
+**Dependencies:** none beyond Hermes itself. Restart the Hermes desktop app (or `/reset`) after installing.
+
 ## Installation
 
 ### Option A: Symlinks (recommended for development)
