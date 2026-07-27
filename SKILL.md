@@ -35,7 +35,7 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 | `dev_browser_get_url` | none | `{success, url, title}` | Gets current URL and page title of active tab. |
 | `dev_browser_eval` | `script` (required) | `{success, result}` | Executes JS in the page context. Returns any JSON-serializable value. |
 | `dev_browser_screenshot` | none | `{success, image_data_url}` | Returns a `data:image/png;base64,...` URL. Use `vision_analyze` to inspect it. |
-| `dev_browser_pick_element` | `insert_to_composer` (optional, default true) | `{success, element, inserted_to_composer}` | Starts an interactive element picker. The user clicks an element in the browser. Returns the element's tag, ID, class, CSS selector, HTML, text, attributes, position, and size. When `insert_to_composer=true`, the reference is also inserted into the chat composer. |
+| `dev_browser_pick_element` | `copy_to_clipboard` (optional, default true) | `{success, element, copied_to_clipboard}` | Starts an interactive element picker. The user clicks an element in the browser. Returns the element's tag, ID, class, CSS selector, HTML, text, attributes, position, and size. When `copy_to_clipboard=true`, the reference is also copied to the system clipboard. |
 
 ### Tab Management (4)
 
@@ -123,9 +123,9 @@ Control the Dev Browser webview pane from within a Hermes chat session. The brow
 ### Pick an element and work with it
 
 ```
-1. dev_browser_pick_element(insert_to_composer=true)
+1. dev_browser_pick_element(copy_to_clipboard=true)
    → user clicks an element in the browser
-   → reference appears in chat composer
+   → reference is copied to the clipboard (user can paste it into chat)
    → also returns the element data to you
 2. Use the selector from the result to run dev_browser_eval:
    dev_browser_eval(script="document.querySelector('form > input#email').value")

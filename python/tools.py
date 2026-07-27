@@ -705,20 +705,20 @@ CLEAR_COOKIES_SCHEMA = {
 
 # --- Tool: dev_browser_pick_element ---
 
-def dev_browser_pick_element(insert_to_composer: bool = True) -> str:
+def dev_browser_pick_element(copy_to_clipboard: bool = True) -> str:
     """Start an element picker in the Dev Browser. The user clicks an element
     in the webview, and its reference (selector, HTML, text, attributes) is
-    captured and optionally inserted into the chat composer.
+    captured and optionally copied to the clipboard.
 
     Args:
-        insert_to_composer: If True, insert the element reference into the chat
-            composer so the user can send it to the agent. If False, the result
+        copy_to_clipboard: If True, copy the element reference to the system
+            clipboard so the user can paste it anywhere. If False, the result
             is returned to the calling agent only.
     """
     request_id = str(uuid.uuid4())
     ok = desktop_ui.emit("hermes-dev-browser.pick-element", {
         "request_id": request_id,
-        "insert_to_composer": insert_to_composer,
+        "copy_to_clipboard": copy_to_clipboard,
     })
     if not ok:
         return tool_error("Dev Browser is only available in the Hermes desktop app.")
@@ -736,7 +736,7 @@ def dev_browser_pick_element(insert_to_composer: bool = True) -> str:
     return json.dumps({
         "success": True,
         "element": el,
-        "inserted_to_composer": insert_to_composer,
+        "copied_to_clipboard": copy_to_clipboard,
     }, ensure_ascii=False)
 
 
@@ -745,16 +745,16 @@ PICK_ELEMENT_SCHEMA = {
     "description": (
         "Start an element picker in the Dev Browser. The user clicks an element "
         "in the browser, and its reference (CSS selector, HTML, text content, "
-        "attributes, position, size) is captured. When insert_to_composer is True "
-        "(default), the reference is also inserted into the chat composer so the "
-        "user can send it to the agent for further work."
+        "attributes, position, size) is captured. When copy_to_clipboard is True "
+        "(default), the reference is also copied to the system clipboard so the "
+        "user can paste it into the chat or anywhere else."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "insert_to_composer": {
+            "copy_to_clipboard": {
                 "type": "boolean",
-                "description": "If true, insert the picked element reference into the chat composer. Default: true.",
+                "description": "If true, copy the picked element reference to the system clipboard. Default: true.",
                 "default": True,
             },
         },

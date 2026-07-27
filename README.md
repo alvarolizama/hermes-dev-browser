@@ -19,7 +19,8 @@ Dev Browser is a desktop plugin that adds a Chromium `<webview>` pane beside the
 - **📟 Console panel** — Captures `console.log/warn/error` from the webview, collapsible with drag-resize
 - **📡 Network inspector** — Basic request tracking with status code colors
 - **📱 Device mode** — Switch between desktop, mobile (375px), and tablet (768px) viewports
-- **🔍 Element picker** — Click the ZoomIn icon or right-click anywhere on the page to toggle the element picker; captures CSS selector, HTML, attributes, and text — automatically inserted into the chat composer as a reference for the agent
+- **🔍 Element picker** — Click the ZoomIn icon or right-click anywhere on the page to toggle the element picker; captures CSS selector, HTML, attributes, and text — automatically copied to the clipboard as a reference for the agent
+- **📸 Screenshot button** — Click the image icon to capture the current page; the PNG is copied straight to your clipboard as a real image (via the plugin backend — the renderer's image-clipboard permission is denied by Hermes)
 - **🖱️ Mouse & keyboard simulation** — Move cursor, click, type, press keys, scroll, and drag — using native Electron `sendInputEvent` with JS fallback. Enables agent-driven automated testing.
 - **🤖 Agent-controlled** — 41 tools the AI agent can call to navigate, inspect DOM, fill forms, wait for elements, intercept network requests, take screenshots, manage tabs, simulate input, and more
 - **⌨️ Keyboard shortcuts** — `Cmd+R` reload, `Cmd+Option+I` DevTools, `Cmd+L` focus URL bar
@@ -38,7 +39,7 @@ hermes-dev-browser/
 │   ├── tools.py                # 41 tool functions + 41 JSON schemas
 │   └── dashboard/
 │       ├── manifest.json       # Dashboard plugin manifest
-│       └── plugin_api.py       # REST mailbox (FastAPI router)
+│       └── plugin_api.py       # REST mailbox + /copy-image clipboard route (FastAPI)
 ├── README.md
 ├── SKILL.md
 └── LICENSE
@@ -128,6 +129,17 @@ plugins:
 - **⌘K** → **"Reload desktop plugins"** in the Hermes desktop app
 - Start a new session (`/reset`) so the new tools load
 
+> **Python backend changes need a dashboard restart.** The dashboard runs as a
+> launchd service (`com.hermes.dashboard`) that survives app restarts, so edits
+> under `python/dashboard/` don't take effect until you restart it:
+>
+> ```bash
+> launchctl kickstart -k gui/$(id -u)/com.hermes.dashboard
+> ```
+>
+> Without this, new REST routes return `405 Method Not Allowed` (the request
+> falls through to the SPA catch-all, which only allows GET).
+
 > **Note:** No need to edit `toolsets.py` or `hermes-agent/tools/`. The Python plugin registers all 41 tools dynamically via `ctx.register_tool()`, so it survives Hermes updates without modification.
 
 ## Usage
@@ -138,9 +150,10 @@ plugins:
 2. Type a URL in the address bar and press Enter
 3. Use back/forward/reload buttons for navigation
 4. Click the **ZoomIn** 🔍 icon (or right-click the page) to toggle the element picker
-5. Click any element in the browser → its reference appears in your chat composer
-6. Click the **bookmark** 🔖 icon to save the current page
-7. Click the **Eye/EyeOff** icon to toggle incognito mode
+5. Click any element in the browser → its reference is copied to your clipboard
+6. Click the **image** 📸 icon to capture the page → the PNG lands in your clipboard
+7. Click the **bookmark** 🔖 icon to save the current page
+8. Click the **Eye/EyeOff** icon to toggle incognito mode
 
 ### Agent-controlled browsing
 
@@ -164,7 +177,7 @@ The agent can control the browser using 41 tools. Ask it to:
 
 ### Element picker
 
-Click the 🔍 icon in the toolbar (or right-click anywhere on the page, or ⌘K → "Dev Browser: Pick Element"), then click any element in the browser. The element's selector, HTML, attributes, and text are formatted and inserted into your chat composer:
+Click the 🔍 icon in the toolbar (or right-click anywhere on the page, or ⌘K → "Dev Browser: Pick Element"), then click any element in the browser. The element's selector, HTML, attributes, and text are formatted and copied to your clipboard — paste them wherever you need:
 
 ```
 🔍 Element picked from http://localhost:4000/login
@@ -179,6 +192,12 @@ Text: ""
 <input id="email" type="text" class="form-input" placeholder="admin" required="">
 ​```
 ```
+
+### Screenshot button
+
+Click the 📸 image icon in the toolbar to capture the visible page. The PNG lands in your clipboard as a **real image** (not a data URL) — paste it straight into the chat, Slack, Preview, anywhere.
+
+Image clipboard writes go through the plugin's Python backend (`POST /api/plugins/hermes-dev-browser/copy-image` → macOS `osascript`), because Hermes' permission handler denies `navigator.clipboard.write` in the renderer. The button shows a warning toast if the backend route isn't reachable (see [Reload](#reload)).
 
 ### Mouse & keyboard simulation
 
@@ -286,7 +305,7 @@ dev_browser_set_viewport(width=1024, height=768)
 | `dev_browser_eval` | ⚡ | Execute JavaScript, return result |
 | `dev_browser_screenshot` | 📸 | Capture screenshot as data URL |
 | `dev_browser_get_url` | 🔗 | Get current URL and title |
-| `dev_browser_pick_element` | 🎯 | Start element picker, capture element ref |
+| `dev_browser_pick_element` | 🎯 | Start element picker, capture element ref (copies to clipboard) |
 
 ### Tab Management (4)
 

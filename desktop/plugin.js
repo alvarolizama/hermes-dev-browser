@@ -166,6 +166,10 @@ const $networkVersion = atom(0)
 const $navState = atom({ back: false, forward: false })
 // Element picker active state
 const $pickerActive = atom(false)
+
+// Plugin context captured at register() time so module-level helpers
+// (e.g. takeScreenshot) can reach the plugin REST API.
+let _pluginCtx = null
 // Incognito mode — when ON, new tabs use an ephemeral (non-persisted) partition
 const $incognitoMode = atom(false)
 
@@ -722,11 +726,11 @@ function startElementPicker() {
                   // Clear the result from the webview
                   try { wv.executeJavaScript('delete window.__hermesPickerResult') } catch {}
 
-                  // Format and insert into the chat composer
+                  // Format and copy to the clipboard
                   const ref = formatElementRef(result)
-                  insertIntoComposer(ref)
+                  copyToClipboard(ref)
 
-                  host.notify({ kind: 'success', message: `Element picked: ${result.tagName}${result.id ? '#' + result.id : ''} — inserted into chat.` })
+                  host.notify({ kind: 'success', message: `Element picked: ${result.tagName}${result.id ? '#' + result.id : ''} — copied to clipboard.` })
                 }
               })
               .catch(() => {})
@@ -758,18 +762,64 @@ function stopElementPicker() {
   $pickerActive.set(false)
 }
 
-/** Insert text into the Hermes chat composer via CustomEvent. */
-function insertIntoComposer(text) {
-  // The composer listens for 'hermes:composer-insert' CustomEvents
-  // with { text, mode, target } — same API as requestComposerInsert()
-  window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('hermes:composer-insert', {
-      detail: { text: text.trim(), mode: 'block', target: 'main' }
-    }))
-  }, 0)
+/** Capture the active webview and copy the PNG to the system clipboard. */
+function takeScreenshot() {
+  const tabs = $tabs.get()
+  const idx = $activeTabIndex.get()
+  const tab = tabs[idx]
+  if (!tab) return
+
+  const wv = webviewRefs.get(tab.id)
+  if (!wv?.capturePage) {
+    host.notify({ kind: 'warning', message: 'Browser not ready for screenshot' })
+    return
+  }
+
+  Promise.resolve(wv.capturePage())
+    .then(async (image) => {
+      const dataUrl = image?.toDataURL?.()
+      if (!dataUrl) throw new Error('empty capture')
+
+      // navigator.clipboard.write is ALWAYS denied in this renderer — Hermes'
+      // permission handler grants only audio capture. Image clipboard writes
+      // therefore go through the Python backend (osascript on macOS).
+      const res = await _pluginCtx?.rest?.('/copy-image', {
+        method: 'POST',
+        body: { data_url: dataUrl },
+      })
+      if (res?.ok) {
+        host.notify({ kind: 'success', message: '📸 Screenshot copied to clipboard.' })
+      } else {
+        throw new Error(res?.error || 'clipboard copy failed')
+      }
+    })
+    .catch((err) => {
+      host.notify({ kind: 'warning', message: `Screenshot failed: ${err?.message || err}` })
+    })
 }
 
-/** Format an element picker result into a reference string for the composer. */
+/** Copy text to the system clipboard (with execCommand fallback). */
+function copyToClipboard(text) {
+  const value = text.trim()
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(value).catch(() => fallbackCopy(value))
+  } else {
+    fallbackCopy(value)
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  try { document.execCommand('copy') } catch {}
+  ta.remove()
+}
+
+/** Format an element picker result into a reference string for the clipboard. */
 function formatElementRef(el) {
   const parts = [
     `🔍 Element picked from ${el.url}`,
@@ -1409,7 +1459,7 @@ function setupAgentEvents(ctx) {
   // dev-browser.pick-element — start element picker, return result to agent
   const d16 = host.onEvent('hermes-dev-browser.pick-element', (event) => {
     const requestId = event?.payload?.request_id
-    const insert = event?.payload?.insert_to_composer // if true, also insert into chat
+    const copyToClip = event?.payload?.copy_to_clipboard // if true, also copy to clipboard
     const tabs = $tabs.get()
     const idx = $activeTabIndex.get()
     const tab = tabs[idx]
@@ -1454,10 +1504,10 @@ function setupAgentEvents(ctx) {
                       ctx.rest('/result', { method: 'POST', body: { request_id: requestId, result } }).catch(() => {})
                     }
 
-                    // If insert_to_composer is true, also insert into chat
-                    if (insert) {
+                    // If copy_to_clipboard is true, also copy to clipboard
+                    if (copyToClip) {
                       const ref = formatElementRef(result)
-                      insertIntoComposer(ref)
+                      copyToClipboard(ref)
                     }
                   }
                 })
@@ -2892,7 +2942,7 @@ function NavToolbar({ urlInputRef }) {
         orientation: 'vertical',
         className: 'h-5 mx-0.5',
       }),
-      // Element picker — click to inspect, result goes to chat composer
+      // Element picker — click to inspect, result copied to clipboard
       jsx(IconButton, {
         icon: 'ZoomIn',
         label: 'Pick element',
@@ -2904,6 +2954,12 @@ function NavToolbar({ urlInputRef }) {
             startElementPicker()
           }
         },
+      }),
+      // Screenshot — capture page, copy PNG to clipboard
+      jsx(IconButton, {
+        icon: 'FileImage',
+        label: 'Screenshot to clipboard',
+        onClick: takeScreenshot,
       }),
       // Device mode dropdown
       jsx(DeviceModeDropdown, {
@@ -3530,6 +3586,8 @@ export default {
   name: 'Dev Browser',
 
   register(ctx) {
+    _pluginCtx = ctx
+
     // Initialize storage and load persisted state
     initStorage(ctx)
 
