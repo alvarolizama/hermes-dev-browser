@@ -35,6 +35,8 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 // ---------------------------------------------------------------------------
 
 const PLUGIN_ID = 'hermes-dev-browser'
+const PERSISTENT_PARTITION = 'persist:hermes-dev-browser'
+const INCOGNITO_PARTITION = 'hermes-dev-browser-incognito'
 
 // Real Chrome 131 UA (NOT Electron). Google blocks login from Electron
 // webviews by detecting Electron in the UA string.
@@ -225,7 +227,10 @@ function initStorage(ctx) {
   const savedTabs = _storage.get('savedTabs', [])
   if (Array.isArray(savedTabs) && savedTabs.length > 0) {
     const restored = savedTabs.map(function (st) {
-      return createTab(st.url, { pinned: !!st.pinned })
+      return createTab(st.url, {
+        pinned: !!st.pinned,
+        partition: PERSISTENT_PARTITION,
+      })
     })
     $tabs.set(restored)
     const savedActive = _storage.get('activeTabIndex', 0)
@@ -249,9 +254,15 @@ function persist(key, value) {
 
 function persistTabs() {
   if (!_storage) return
+  // Incognito tabs are intentionally ephemeral and must never be restored.
   var tabs = $tabs.get()
+  tabs = tabs.filter(function (t) { return t._partition !== INCOGNITO_PARTITION })
   var saved = tabs.map(function (t) {
-    return { url: t.url, title: t.title, pinned: !!t.pinned }
+    return {
+      url: currentUrlMap.get(t.id) || t.url,
+      title: t.title,
+      pinned: !!t.pinned,
+    }
   })
   _storage.set('savedTabs', saved)
   _storage.set('activeTabIndex', $activeTabIndex.get())
@@ -319,6 +330,7 @@ function createTab(url, opts) {
     loading: false,
     error: null,
     pinned: !!opts.pinned,
+    _partition: opts.partition || PERSISTENT_PARTITION,
   }
   consoleEntriesMap.set(id, [])
   networkEntriesMap.set(id, [])
@@ -337,7 +349,7 @@ function addTab(url) {
   // Stash the partition this tab should use so createWebviewForTab can pick it
   // up when the TabContent component mounts. Incognito tabs get an ephemeral
   // (non-persisted) partition; normal tabs keep the persisted one.
-  tab._partition = $incognitoMode.get() ? 'hermes-dev-browser-incognito' : 'persist:hermes-dev-browser'
+  tab._partition = $incognitoMode.get() ? INCOGNITO_PARTITION : PERSISTENT_PARTITION
   persistTabs()
   // Update URL bar to the new tab's URL
   $urlBarValue.set(tab.url)
@@ -851,7 +863,7 @@ function createWebviewForTab(tabId, url, hostDiv, partition) {
   // effect. Default to the persisted partition so cookies/sessions survive
   // Hermes restarts; callers may pass an ephemeral partition for incognito.
   webview.setAttribute('allowpopups', '')
-  webview.setAttribute('partition', partition || 'persist:hermes-dev-browser')
+  webview.setAttribute('partition', partition || PERSISTENT_PARTITION)
   // allowRunningInsecureContent is needed for localhost / HTTP sites (e.g. Dran)
   webview.setAttribute(
     'webpreferences',
